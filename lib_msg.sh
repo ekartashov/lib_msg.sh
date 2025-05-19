@@ -72,6 +72,7 @@ _lib_msg_init_colors() {
 }
 _lib_msg_init_colors # Call color initialization
 # --- End ANSI Color Codes ---
+_LIB_MSG_NL=$(printf '\n') # Define a newline character variable once
 # --- End lib_msg TTY and Width Detection ---
 
 # Internal function to wrap text.
@@ -104,9 +105,11 @@ _lib_msg_wrap_text() {
             if [ "$_word_len" -gt "$_max_width" ]; then # Word itself is longer than max width
                 _temp_long_word="$_word"
                 while [ "${#_temp_long_word}" -gt "$_max_width" ]; do
-                    _chunk=$(echo "$_temp_long_word" | cut -c -"$_max_width")
+                    _chunk=$(expr substr "$_temp_long_word" 1 "$_max_width")
                     printf '%s\n' "$_chunk"
-                    _temp_long_word=$(echo "$_temp_long_word" | cut -c "$((_max_width + 1))"-)
+                    # Remove the extracted chunk from the beginning of _temp_long_word
+                    # This is POSIX-compliant and more efficient than echo|cut
+                    _temp_long_word=${_temp_long_word#"$_chunk"}
                 done
                 if [ -n "$_temp_long_word" ]; then # Remainder of the long word
                     _current_line="$_temp_long_word"
@@ -128,9 +131,10 @@ _lib_msg_wrap_text() {
             if [ "$_word_len" -gt "$_max_width" ]; then # This new word is also too long
                 _temp_long_word="$_word"
                 while [ "${#_temp_long_word}" -gt "$_max_width" ]; do
-                    _chunk=$(echo "$_temp_long_word" | cut -c -"$_max_width")
+                    _chunk=$(expr substr "$_temp_long_word" 1 "$_max_width")
                     printf '%s\n' "$_chunk"
-                    _temp_long_word=$(echo "$_temp_long_word" | cut -c "$((_max_width + 1))"-)
+                    # Remove the extracted chunk from the beginning of _temp_long_word
+                    _temp_long_word=${_temp_long_word#"$_chunk"}
                 done
                 if [ -n "$_temp_long_word" ]; then
                      _current_line="$_temp_long_word"
@@ -215,7 +219,7 @@ _print_msg_core() {
         _all_wrapped_lines=$(_lib_msg_wrap_text "$_message_content" "$_text_wrap_width")
 
         # Check if _all_wrapped_lines is empty or just a newline (from empty input to wrapper)
-        if [ -z "$_all_wrapped_lines" ] || [ "$_all_wrapped_lines" = "$(printf '\n')" ]; then
+        if [ -z "$_all_wrapped_lines" ] || [ "$_all_wrapped_lines" = "$_LIB_MSG_NL" ]; then
             if [ -z "$_message_content" ]; then # Original message was empty
                  _processed_output="$_prefix_str" # Just the prefix
             else # Wrapper produced nothing for a non-empty message (should not happen with current wrapper)
@@ -311,16 +315,23 @@ die() {
     shift # Remove error code, remaining args are the message
     _message="$*" # Combine all remaining arguments into the message string
 
-    # Default error code if not provided or not a non-negative number
-    if ! expr "$_error_code" : '^[0-9][0-9]*$' >/dev/null ; then
+    # Default error code if not provided or not a non-negative number string
+    _is_valid_format_for_exit_code=false
+    case "$_error_code" in
+        [0-9]|[0-9][0-9]*) # Matches one or more digits (e.g., "0", "123", "007")
+            _is_valid_format_for_exit_code=true ;;
+        *) # Does not match the pattern of one or more digits
+            _is_valid_format_for_exit_code=false ;;
+    esac
+
+    if ! $_is_valid_format_for_exit_code; then
         _message="${_error_code}${_message:+ }$_message" # Prepend original $1 to message
         _error_code=1 # Default error code to 1
-    elif [ "$_error_code" -lt 0 ]; then # Negative error codes are unusual for exit status
-        # Silently convert negative codes to positive for exit status, or treat as message
-        # For simplicity, let's ensure error_code is non-negative for exit/return
-        _message="Note: Negative error code ($_error_code) used with die. ${_message}"
-        _error_code=1 # Default to 1 if original was negative
     fi
+    # Note: The original 'elif [ "$_error_code" -lt 0 ]' was effectively unreachable
+    # because if 'expr' matched (meaning $_error_code was a non-negative integer string),
+    # it wouldn't be less than 0. If 'expr' didn't match (e.g., for "-5" or "abc"),
+    # the first 'if' block was entered, $_error_code became 1, and the 'elif' was skipped.
 
     _prefix_tag=$(_lib_msg_colorize "E:" "$_LIB_MSG_CLR_RED" "$_LIB_MSG_STDERR_IS_TTY")
     _print_msg_core "$_message" "${SCRIPT_NAME:-lib_msg.sh}: ${_prefix_tag} " "true" ""

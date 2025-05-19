@@ -1,7 +1,22 @@
 #!/usr/bin/env bats
 
-# Check terminal width (exits on failure)
-stty cols 80
+# BATS file-level setup and teardown for terminal width management
+_bats_original_cols="" # File-scoped variable
+
+setup_file() {
+  local _stty_output
+  _stty_output=$(stty size 2>/dev/null) # Capture stty size, redirect stderr
+  if [ -n "$_stty_output" ]; then
+    _bats_original_cols=${_stty_output##* }
+    stty cols 80 2>/dev/null
+  fi
+}
+
+teardown_file() {
+  if [ -n "$_bats_original_cols" ]; then
+    stty cols "$_bats_original_cols" 2>/dev/null
+  fi
+}
 
 # Load BATS support and assertion libraries
 load 'libs/bats-support/load'

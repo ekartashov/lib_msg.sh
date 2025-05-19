@@ -73,6 +73,7 @@ _lib_msg_init_colors() {
 _lib_msg_init_colors # Call color initialization
 # --- End ANSI Color Codes ---
 _LIB_MSG_NL=$(printf '\n') # Define a newline character variable once
+_LIB_MSG_ESC=$(printf '\033') # Define ESC character variable once
 # --- End lib_msg TTY and Width Detection ---
 
 # Internal function to wrap text.
@@ -105,10 +106,20 @@ _lib_msg_wrap_text() {
             if [ "$_word_len" -gt "$_max_width" ]; then # Word itself is longer than max width
                 _temp_long_word="$_word"
                 while [ "${#_temp_long_word}" -gt "$_max_width" ]; do
-                    _chunk=$(expr substr "$_temp_long_word" 1 "$_max_width")
+                    # Pure POSIX shell replacement for: _chunk=$(expr substr "$_temp_long_word" 1 "$_max_width")
+                    _chunk=""
+                    _build_chunk_temp_word_copy="$_temp_long_word" # Use a copy to build the chunk
+                    _char_count_for_chunk=0
+                    while [ "$_char_count_for_chunk" -lt "$_max_width" ] && [ -n "$_build_chunk_temp_word_copy" ]; do
+                        _one_char_for_chunk="${_build_chunk_temp_word_copy%"${_build_chunk_temp_word_copy#?}"}"
+                        _chunk="${_chunk}${_one_char_for_chunk}"
+                        _build_chunk_temp_word_copy="${_build_chunk_temp_word_copy#?}"
+                        _char_count_for_chunk=$((_char_count_for_chunk + 1))
+                    done
+                    # End of pure POSIX shell replacement
+
                     printf '%s\n' "$_chunk"
                     # Remove the extracted chunk from the beginning of _temp_long_word
-                    # This is POSIX-compliant and more efficient than echo|cut
                     _temp_long_word=${_temp_long_word#"$_chunk"}
                 done
                 if [ -n "$_temp_long_word" ]; then # Remainder of the long word
@@ -131,7 +142,18 @@ _lib_msg_wrap_text() {
             if [ "$_word_len" -gt "$_max_width" ]; then # This new word is also too long
                 _temp_long_word="$_word"
                 while [ "${#_temp_long_word}" -gt "$_max_width" ]; do
-                    _chunk=$(expr substr "$_temp_long_word" 1 "$_max_width")
+                    # Pure POSIX shell replacement for: _chunk=$(expr substr "$_temp_long_word" 1 "$_max_width")
+                    _chunk=""
+                    _build_chunk_temp_word_copy="$_temp_long_word" # Use a copy to build the chunk
+                    _char_count_for_chunk=0
+                    while [ "$_char_count_for_chunk" -lt "$_max_width" ] && [ -n "$_build_chunk_temp_word_copy" ]; do
+                        _one_char_for_chunk="${_build_chunk_temp_word_copy%"${_build_chunk_temp_word_copy#?}"}"
+                        _chunk="${_chunk}${_one_char_for_chunk}"
+                        _build_chunk_temp_word_copy="${_build_chunk_temp_word_copy#?}"
+                        _char_count_for_chunk=$((_char_count_for_chunk + 1))
+                    done
+                    # End of pure POSIX shell replacement
+
                     printf '%s\n' "$_chunk"
                     # Remove the extracted chunk from the beginning of _temp_long_word
                     _temp_long_word=${_temp_long_word#"$_chunk"}
@@ -186,6 +208,90 @@ _lib_msg_colorize() {
         printf '%s' "$_text_to_color_val" # Print plain text if not TTY or no color
     fi
 }
+# Internal function to strip ANSI escape codes using pure POSIX shell.
+# Outputs the stripped string.
+# Note: This is a simplified stripper, primarily targeting CSI sequences ending in 'm'.
+# More complex ANSI sequences might not be fully handled.
+# Usage: _lib_msg_strip_ansi_shell "string_with_ansi"
+_lib_msg_strip_ansi_shell() {
+    _input_str_to_strip="$1"
+    _result_str=""
+    _remaining_input="$_input_str_to_strip"
+    # _esc_char is now global _LIB_MSG_ESC
+
+    while [ -n "$_remaining_input" ]; do
+        case "$_remaining_input" in
+            # Starts with ESC
+            "$_LIB_MSG_ESC"*) 
+                _after_esc="${_remaining_input#"$_LIB_MSG_ESC"}"
+                if [ "${_after_esc%"${_after_esc#?}"}" = "[" ]; then # Check for CSI '['
+                    _sequence_part="${_after_esc#?}" # Remove '['
+                    _params_and_cmd="$_sequence_part"
+                    _cmd_char=""
+                    _loop_idx=0
+                    _max_loop_idx=${#_params_and_cmd}
+
+                    while [ "$_loop_idx" -lt "$_max_loop_idx" ]; do
+                        # Pure POSIX shell way to get char at _loop_idx from _params_and_cmd
+                        _temp_str_for_char="$_params_and_cmd"
+                        _char_idx_iter=0
+                        while [ "$_char_idx_iter" -lt "$_loop_idx" ]; do
+                            _temp_str_for_char="${_temp_str_for_char#?}"
+                            _char_idx_iter=$((_char_idx_iter + 1))
+                        done
+                        _current_param_char="${_temp_str_for_char%"${_temp_str_for_char#?}"}" # Get first char of remaining
+
+                        case "$_current_param_char" in
+                            # Parameter characters or colon (for 24-bit color)
+                            [0-9\;:]) 
+                                # Continue, part of parameters
+                                ;;
+                            # Command character (e.g., 'm', 'H', 'J')
+                            [a-zA-Z]) 
+                                _cmd_char="$_current_param_char"
+                                # Pure POSIX shell way to get substring from _loop_idx + 1 to end
+                                _temp_str_for_remainder="$_params_and_cmd"
+                                _remainder_idx_iter=0
+                                _num_chars_to_chop=$((_loop_idx + 1)) # Chop up to and including current command char
+                                while [ "$_remainder_idx_iter" -lt "$_num_chars_to_chop" ]; do
+                                    _temp_str_for_remainder="${_temp_str_for_remainder#?}"
+                                    _remainder_idx_iter=$((_remainder_idx_iter + 1))
+                                done
+                                _remaining_input="$_temp_str_for_remainder"
+                                break # Found command, exit parameter loop
+                                ;;
+                            # Unexpected character in sequence, treat as unterminated or malformed
+                            *) 
+                                _cmd_char="" # Ensure it's considered unterminated
+                                # If char is unexpected, we don't consume it from _params_and_cmd for _remaining_input
+                                # The outer loop will then process it as a literal char if it's not ESC.
+                                # Or, if we want to discard the rest of this broken sequence:
+                                _remaining_input="" # Effectively discards rest of _params_and_cmd
+                                break # Exit parameter loop
+                                ;;
+                        esac
+                        _loop_idx=$((_loop_idx + 1))
+                    done
+
+                    if [ -z "$_cmd_char" ]; then # Sequence didn't terminate as expected with a command char
+                         _result_str="${_result_str}${_LIB_MSG_ESC}[" # Append literal ESC[
+                         _remaining_input="$_sequence_part" # Continue after just ESC[
+                    fi
+                else # Not a CSI sequence (e.g., could be other ESC sequence or literal ESC)
+                    _result_str="${_result_str}${_LIB_MSG_ESC}" # Append literal ESC
+                    _remaining_input="$_after_esc" # Continue after ESC
+                fi
+                ;;
+            # Not starting with ESC
+            *)
+                _char_to_add="${_remaining_input%"${_remaining_input#?}"}" # Get first char
+                _result_str="${_result_str}${_char_to_add}"
+                _remaining_input="${_remaining_input#?}" # Remove first char
+                ;;
+        esac
+    done
+    printf '%s' "$_result_str"
+}
 _print_msg_core() {
     _message_content="$1"
     _prefix_str="$2"
@@ -198,7 +304,7 @@ _print_msg_core() {
     fi
 
     # Calculate the visible length of the prefix string by stripping ANSI codes
-    _stripped_prefix_for_len=$(printf '%s' "$_prefix_str" | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g')
+    _stripped_prefix_for_len=$(_lib_msg_strip_ansi_shell "$_prefix_str")
     _visible_prefix_len=${#_stripped_prefix_for_len}
 
     # --- DIAGNOSTIC LOGGING (Round 2) ---

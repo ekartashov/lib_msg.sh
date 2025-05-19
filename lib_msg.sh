@@ -6,24 +6,24 @@ _LIB_MSG_STDERR_IS_TTY="" # Unset initially
 _LIB_MSG_TERMINAL_WIDTH=0   # Default to 0 (no wrapping)
 
 _lib_msg_init_detection() {
-    # Only run initialization once
-    if [ -n "$_LIB_MSG_STDOUT_IS_TTY" ]; then
-        return
-    fi
+    # TTY detection - only run if not already set (i.e., _LIB_MSG_STDOUT_IS_TTY is empty)
+    if [ -z "$_LIB_MSG_STDOUT_IS_TTY" ]; then
+        if [ -t 1 ]; then
+            _LIB_MSG_STDOUT_IS_TTY="true"
+        else
+            _LIB_MSG_STDOUT_IS_TTY="false"
+        fi
 
-    if [ -t 1 ]; then
-        _LIB_MSG_STDOUT_IS_TTY="true"
-    else
-        _LIB_MSG_STDOUT_IS_TTY="false"
-    fi
+        if [ -t 2 ]; then
+            _LIB_MSG_STDERR_IS_TTY="true"
+        else
+            _LIB_MSG_STDERR_IS_TTY="false"
+        fi
+    fi # End of TTY detection block
 
-    if [ -t 2 ]; then
-        _LIB_MSG_STDERR_IS_TTY="true"
-    else
-        _LIB_MSG_STDERR_IS_TTY="false"
-    fi
-
-    # Try to get terminal width from COLUMNS env var if either stdout or stderr is a TTY
+    # Terminal width detection - always attempt to re-evaluate if a TTY is active.
+    # Reset width first to ensure it's re-evaluated from current COLUMNS.
+    _LIB_MSG_TERMINAL_WIDTH=0
     if [ "$_LIB_MSG_STDOUT_IS_TTY" = "true" ] || [ "$_LIB_MSG_STDERR_IS_TTY" = "true" ]; then
         _temp_cols="${COLUMNS:-}"
         case "$_temp_cols" in
@@ -193,18 +193,24 @@ _print_msg_core() {
         _is_tty=$_LIB_MSG_STDERR_IS_TTY
     fi
 
-    _prefix_len=${#_prefix_str}
+    # Calculate the visible length of the prefix string by stripping ANSI codes
+    _stripped_prefix_for_len=$(printf '%s' "$_prefix_str" | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g')
+    _visible_prefix_len=${#_stripped_prefix_for_len}
 
+    # --- DIAGNOSTIC LOGGING (Round 2) ---
+# Removed diagnostic logging
+    # --- END DIAGNOSTIC ---
     if [ "$_is_tty" = "true" ] && [ "$_LIB_MSG_TERMINAL_WIDTH" -gt 0 ]; then
-        _text_wrap_width=$((_LIB_MSG_TERMINAL_WIDTH - _prefix_len))
-        if [ "$_text_wrap_width" -lt 1 ]; then # Ensure at least 1 char width for content
-            _text_wrap_width=1
-        fi
+        _text_wrap_width=$((_LIB_MSG_TERMINAL_WIDTH - _visible_prefix_len))
 
-        # _lib_msg_wrap_text outputs lines, each ending with \n.
+        # Only proceed with wrapping if the calculated content width is sensible
+        if [ "$_text_wrap_width" -ge 5 ]; then # Minimum sensible width to attempt wrapping
+            # _lib_msg_wrap_text outputs lines, each ending with \n.
         # We pipe its output and prefix each line.
         _processed_output=""
         _first_line_processed=true
+        _indent_spaces=$(printf "%*s" "$_visible_prefix_len" "")
+
         # Use command substitution to capture all wrapped lines
         _all_wrapped_lines=$(_lib_msg_wrap_text "$_message_content" "$_text_wrap_width")
 
@@ -225,7 +231,7 @@ _print_msg_core() {
                     _processed_output="${_prefix_str}${_wrapped_line}"
                     _first_line_processed=false
                 else
-                    _processed_output="${_processed_output}\n${_prefix_str}${_wrapped_line}"
+                    _processed_output="${_processed_output}\n${_indent_spaces}${_wrapped_line}"
                 fi
             done <<LIBMSG_HEREDOC_INPUT
 ${_all_wrapped_lines}
@@ -234,21 +240,26 @@ LIBMSG_HEREDOC_INPUT
 
         if [ "$_no_final_newline" = "true" ]; then
             if [ "$_is_stderr" = "true" ]; then
-                printf '%s' "$_processed_output" >&2
+                printf '%b' "$_processed_output" >&2
             else
-                printf '%s' "$_processed_output"
+                printf '%b' "$_processed_output"
             fi
         else
             if [ "$_is_stderr" = "true" ]; then
-                printf '%s\n' "$_processed_output" >&2
+                printf '%b\n' "$_processed_output" >&2
             else
-                printf '%s\n' "$_processed_output"
-            fi
-        fi
-        return
-    fi
+                printf '%b\n' "$_processed_output"
+            fi  # Closes the inner if/else for _is_stderr
+            fi  # This correctly closes: if [ "$_no_final_newline" = "true" ] (L240)
+            # If we've reached here, wrapping was attempted and printing was done.
+            return # Now, exit _print_msg_core as the wrapping path is complete.
+        else # This 'else' is for: if [ "$_text_wrap_width" -ge 5 ] (L207)
+            # This effectively means the prefix is too long for the terminal width to allow meaningful wrapping.
+            : # No operation, will fall through to the non-wrapping part below
+        fi # End of sensible wrap width check
+    fi # End of TTY and terminal width check
 
-    # Fallback: No wrapping needed or possible
+    # Fallback: No wrapping needed or possible (either not a TTY, or terminal width 0, or calculated content width too small)
     if [ "$_no_final_newline" = "true" ]; then
         if [ "$_is_stderr" = "true" ]; then
             printf '%s%s' "$_prefix_str" "$_message_content" >&2

@@ -6,42 +6,40 @@ _LIB_MSG_STDERR_IS_TTY="" # Unset initially
 _LIB_MSG_TERMINAL_WIDTH=0   # Default to 0 (no wrapping)
 
 _lib_msg_init_detection() {
-    # TTY detection - only run if not already set (i.e., _LIB_MSG_STDOUT_IS_TTY is empty)
+    # TTY detection - only run if not already set
     if [ -z "$_LIB_MSG_STDOUT_IS_TTY" ]; then
-        if [ -t 1 ]; then
+        # Allow overriding TTY detection via environment variables for testing
+        if [ -n "$LIB_MSG_FORCE_STDOUT_TTY" ]; then
+            _LIB_MSG_STDOUT_IS_TTY="$LIB_MSG_FORCE_STDOUT_TTY"
+        elif [ -t 1 ]; then
             _LIB_MSG_STDOUT_IS_TTY="true"
         else
             _LIB_MSG_STDOUT_IS_TTY="false"
         fi
 
-        if [ -t 2 ]; then
+        if [ -n "$LIB_MSG_FORCE_STDERR_TTY" ]; then
+            _LIB_MSG_STDERR_IS_TTY="$LIB_MSG_FORCE_STDERR_TTY"
+        elif [ -t 2 ]; then
             _LIB_MSG_STDERR_IS_TTY="true"
         else
             _LIB_MSG_STDERR_IS_TTY="false"
         fi
-    fi # End of TTY detection block
+    fi
 
-    # Terminal width detection - always attempt to re-evaluate if a TTY is active.
-    # Reset width first to ensure it's re-evaluated from current COLUMNS.
     _LIB_MSG_TERMINAL_WIDTH=0
     if [ "$_LIB_MSG_STDOUT_IS_TTY" = "true" ] || [ "$_LIB_MSG_STDERR_IS_TTY" = "true" ]; then
         _temp_cols="${COLUMNS:-}"
         case "$_temp_cols" in
-            ''|*[!0-9]*) # Empty or contains a non-digit
-                _LIB_MSG_TERMINAL_WIDTH=0 ;;
-            0) # Is exactly "0"
-                _LIB_MSG_TERMINAL_WIDTH=0 ;;
-            0*) # Starts with "0" but isn't just "0" (e.g. "01", "007") - treat as invalid
-                _LIB_MSG_TERMINAL_WIDTH=0 ;;
-            *[0-9]) # All digits, not empty, doesn't start with 0 (unless "0" itself, handled above)
-                    # This means it's a positive integer string like "1", "80", "120"
-                _LIB_MSG_TERMINAL_WIDTH="$_temp_cols" ;;
-            *) # Fallback, e.g. if COLUMNS was something truly unexpected or for safety
-                _LIB_MSG_TERMINAL_WIDTH=0 ;;
+            ''|*[!0-9]*) _LIB_MSG_TERMINAL_WIDTH=0 ;;
+            0) _LIB_MSG_TERMINAL_WIDTH=0 ;;
+            0*) _LIB_MSG_TERMINAL_WIDTH=0 ;;
+            *[0-9]) _LIB_MSG_TERMINAL_WIDTH="$_temp_cols" ;;
+            *) _LIB_MSG_TERMINAL_WIDTH=0 ;;
         esac
     fi
 }
-_lib_msg_init_detection # Call initialization
+_lib_msg_init_detection
+
 # --- ANSI Color Codes (Initialize Once) ---
 _LIB_MSG_CLR_RESET=""
 _LIB_MSG_CLR_BLACK=""
@@ -53,10 +51,18 @@ _LIB_MSG_CLR_MAGENTA=""
 _LIB_MSG_CLR_CYAN=""
 _LIB_MSG_CLR_WHITE=""
 _LIB_MSG_CLR_BOLD=""
-# Add more (backgrounds, other styles) if needed
 
 _lib_msg_init_colors() {
-    # Only initialize if stdout or stderr is a TTY
+    _LIB_MSG_CLR_RESET="" # Clear them first
+    _LIB_MSG_CLR_BLACK=""
+    _LIB_MSG_CLR_RED=""
+    _LIB_MSG_CLR_GREEN=""
+    _LIB_MSG_CLR_YELLOW=""
+    _LIB_MSG_CLR_BLUE=""
+    _LIB_MSG_CLR_MAGENTA=""
+    _LIB_MSG_CLR_CYAN=""
+    _LIB_MSG_CLR_WHITE=""
+    _LIB_MSG_CLR_BOLD=""
     if [ "$_LIB_MSG_STDOUT_IS_TTY" = "true" ] || [ "$_LIB_MSG_STDERR_IS_TTY" = "true" ]; then
         _LIB_MSG_CLR_RESET=$(printf '\033[0m')
         _LIB_MSG_CLR_BLACK=$(printf '\033[0;30m')
@@ -70,28 +76,45 @@ _lib_msg_init_colors() {
         _LIB_MSG_CLR_BOLD=$(printf '\033[1m')
     fi
 }
-_lib_msg_init_colors # Call color initialization
-# --- End ANSI Color Codes ---
-_LIB_MSG_NL=$(printf '\n') # Define a newline character variable once
-_LIB_MSG_ESC=$(printf '\033') # Define ESC character variable once
+_lib_msg_init_colors
+
+_LIB_MSG_NL=$(printf '\n')
+_LIB_MSG_ESC=$(printf '\033')
 # --- End lib_msg TTY and Width Detection ---
 
+# Global array to be populated by _lib_msg_wrap_text
+lines=()
+
 # Internal function to wrap text.
-# Outputs one or more lines, each terminated by a newline.
+# Populates the global `lines` array.
 # Usage: _lib_msg_wrap_text "message_content" "max_content_width"
 _lib_msg_wrap_text() {
     _text_to_wrap="$1"
-    _max_width="$2" # Max width for the content part of the message
+    _max_width="$2"
+    lines=() # Initialize/clear global array
 
-    # If no width, or width is too small, or text is empty, print text as is with a newline.
-    if [ "$_max_width" -le 0 ] || [ -z "$_text_to_wrap" ]; then
-        printf '%s\n' "$_text_to_wrap"
+    _temp_text_for_check="$_text_to_wrap"
+    _old_ifs_check="$IFS"
+    IFS=' '
+    # shellcheck disable=SC2086 # Word splitting is desired here for counting
+    set -- $_temp_text_for_check
+    _word_count=$#
+    IFS="$_old_ifs_check"
+    set -- # Clear positional params from check
+
+    if [ "$_word_count" -eq 0 ]; then # Input was empty or all spaces
+        lines+=("") # Represents a single empty line
+        return
+    fi
+
+    if [ "$_max_width" -le 0 ]; then # No wrapping if width is 0 or less
+        lines+=("$_text_to_wrap")
         return
     fi
 
     _current_line=""
     _old_ifs="$IFS"
-    IFS=' ' # Split by single space for word iteration
+    IFS=' '
     # shellcheck disable=SC2086 # We explicitly want word splitting here
     set -- $_text_to_wrap # Words of _text_to_wrap become positional parameters $1, $2, ...
     IFS="$_old_ifs"
@@ -102,13 +125,11 @@ _lib_msg_wrap_text() {
         _current_line_len=${#_current_line}
 
         if $_first_word_on_current_line; then
-            # Word is the first on the current line (or a new line)
-            if [ "$_word_len" -gt "$_max_width" ]; then # Word itself is longer than max width
+            if [ "$_word_len" -gt "$_max_width" ]; then
                 _temp_long_word="$_word"
                 while [ "${#_temp_long_word}" -gt "$_max_width" ]; do
-                    # Pure POSIX shell replacement for: _chunk=$(expr substr "$_temp_long_word" 1 "$_max_width")
                     _chunk=""
-                    _build_chunk_temp_word_copy="$_temp_long_word" # Use a copy to build the chunk
+                    _build_chunk_temp_word_copy="$_temp_long_word"
                     _char_count_for_chunk=0
                     while [ "$_char_count_for_chunk" -lt "$_max_width" ] && [ -n "$_build_chunk_temp_word_copy" ]; do
                         _one_char_for_chunk="${_build_chunk_temp_word_copy%"${_build_chunk_temp_word_copy#?}"}"
@@ -116,35 +137,30 @@ _lib_msg_wrap_text() {
                         _build_chunk_temp_word_copy="${_build_chunk_temp_word_copy#?}"
                         _char_count_for_chunk=$((_char_count_for_chunk + 1))
                     done
-                    # End of pure POSIX shell replacement
-
-                    printf '%s\n' "$_chunk"
-                    # Remove the extracted chunk from the beginning of _temp_long_word
+                    lines+=("$_chunk")
                     _temp_long_word=${_temp_long_word#"$_chunk"}
                 done
-                if [ -n "$_temp_long_word" ]; then # Remainder of the long word
+                if [ -n "$_temp_long_word" ]; then
                     _current_line="$_temp_long_word"
                     _first_word_on_current_line=false
-                else # Long word was perfectly consumed
+                else
                     _current_line=""
-                    _first_word_on_current_line=true # Next word will start a new line
+                    _first_word_on_current_line=true
                 fi
-                continue # Move to next positional parameter (_word)
-            else # Word fits or is shorter than max_width
+                continue
+            else
                 _current_line="$_word"
                 _first_word_on_current_line=false
             fi
-        elif [ $((_current_line_len + 1 + _word_len)) -le "$_max_width" ]; then # Word fits on current line with a space
+        elif [ $((_current_line_len + 1 + _word_len)) -le "$_max_width" ]; then
             _current_line="$_current_line $_word"
-        else # Word does not fit on current line, print current line and start new one
-            printf '%s\n' "$_current_line"
-            # Now handle the current _word for the new line
-            if [ "$_word_len" -gt "$_max_width" ]; then # This new word is also too long
+        else
+            lines+=("$_current_line")
+            if [ "$_word_len" -gt "$_max_width" ]; then
                 _temp_long_word="$_word"
                 while [ "${#_temp_long_word}" -gt "$_max_width" ]; do
-                    # Pure POSIX shell replacement for: _chunk=$(expr substr "$_temp_long_word" 1 "$_max_width")
                     _chunk=""
-                    _build_chunk_temp_word_copy="$_temp_long_word" # Use a copy to build the chunk
+                    _build_chunk_temp_word_copy="$_temp_long_word"
                     _char_count_for_chunk=0
                     while [ "$_char_count_for_chunk" -lt "$_max_width" ] && [ -n "$_build_chunk_temp_word_copy" ]; do
                         _one_char_for_chunk="${_build_chunk_temp_word_copy%"${_build_chunk_temp_word_copy#?}"}"
@@ -152,10 +168,7 @@ _lib_msg_wrap_text() {
                         _build_chunk_temp_word_copy="${_build_chunk_temp_word_copy#?}"
                         _char_count_for_chunk=$((_char_count_for_chunk + 1))
                     done
-                    # End of pure POSIX shell replacement
-
-                    printf '%s\n' "$_chunk"
-                    # Remove the extracted chunk from the beginning of _temp_long_word
+                    lines+=("$_chunk")
                     _temp_long_word=${_temp_long_word#"$_chunk"}
                 done
                 if [ -n "$_temp_long_word" ]; then
@@ -165,287 +178,226 @@ _lib_msg_wrap_text() {
                     _current_line=""
                     _first_word_on_current_line=true
                 fi
-            else # New word fits fine on its own new line
+            else
                 _current_line="$_word"
                 _first_word_on_current_line=false
             fi
         fi
     done
 
-    # Print any remaining text in _current_line
     if [ -n "$_current_line" ]; then
-        printf '%s\n' "$_current_line"
-    elif [ $# -eq 0 ] && [ -n "$_text_to_wrap" ]; then
-        # This case handles if _text_to_wrap was non-empty but had no spaces (single word)
-        # and it was shorter than _max_width, thus loop was not entered but text needs printing.
-        # However, the loop `for _word` (after `set -- $_text_to_wrap`) will run once for a single word.
-        # So this specific elif might be redundant if the loop handles single words correctly.
-        # The initial check `[ -z "$_text_to_wrap" ]` in the function handles empty input.
-        # If _text_to_wrap is non-empty, the loop runs. If loop finishes, _current_line has content.
-        : # Covered by `if [ -n "$_current_line" ]`
-    elif [ -z "$_text_to_wrap" ] && [ $# -eq 0 ]; then
-        # Original text was empty, and `set --` resulted in no positional parameters.
-        # _lib_msg_wrap_text "" should produce a single newline.
-        # This is handled by the initial check: `printf '%s\n' ""` prints a newline.
+        lines+=("$_current_line")
+    elif [ $# -gt 0 ] && [ ${#lines[@]} -eq 0 ] && ! $_first_word_on_current_line ; then
+        # This case handles if _text_to_wrap was a single word shorter than _max_width
+        # and the loop finished with _current_line holding that word, but it wasn't added.
+        # This should ideally be caught by `if [ -n "$_current_line" ]`
+        # For safety, if loop ran ( $# > 0 ), lines is empty, but _current_line was processed.
+        # This path is unlikely if the logic is correct.
         :
     fi
 }
 
-# Internal function to apply color if on TTY.
-# Does not add a newline itself.
-# Expects color codes to be initialized (e.g., _LIB_MSG_CLR_RED, _LIB_MSG_CLR_RESET).
-# Usage: _lib_msg_colorize "text_to_color" "$_COLOR_CODE_VAR" "$_IS_TTY_FLAG"
 _lib_msg_colorize() {
     _text_to_color_val="$1"
     _color_code_val="$2"
-    _is_stream_tty_val="$3" # Should be "true" or "false"
+    _is_stream_tty_val="$3"
 
-    # Only apply color if the stream is a TTY and a color code is provided (non-empty)
-    # and the reset code is also available (implicitly, if colors are initialized, reset is too)
     if [ "$_is_stream_tty_val" = "true" ] && [ -n "$_color_code_val" ] && [ -n "$_LIB_MSG_CLR_RESET" ]; then
         printf '%s%s%s' "$_color_code_val" "$_text_to_color_val" "$_LIB_MSG_CLR_RESET"
     else
-        printf '%s' "$_text_to_color_val" # Print plain text if not TTY or no color
+        printf '%s' "$_text_to_color_val"
     fi
 }
-# Internal function to strip ANSI escape codes using pure POSIX shell.
-# Outputs the stripped string.
-# Note: This is a simplified stripper, primarily targeting CSI sequences ending in 'm'.
-# More complex ANSI sequences might not be fully handled.
-# Usage: _lib_msg_strip_ansi_shell "string_with_ansi"
+
 _lib_msg_strip_ansi_shell() {
     _input_str_to_strip="$1"
     _result_str=""
     _remaining_input="$_input_str_to_strip"
-    # _esc_char is now global _LIB_MSG_ESC
 
     while [ -n "$_remaining_input" ]; do
         case "$_remaining_input" in
-            # Starts with ESC
-            "$_LIB_MSG_ESC"*) 
+            "$_LIB_MSG_ESC"*)
                 _after_esc="${_remaining_input#"$_LIB_MSG_ESC"}"
-                if [ "${_after_esc%"${_after_esc#?}"}" = "[" ]; then # Check for CSI '['
-                    _sequence_part="${_after_esc#?}" # Remove '['
+                if [ "${_after_esc%"${_after_esc#?}"}" = "[" ]; then
+                    _sequence_part="${_after_esc#?}"
                     _params_and_cmd="$_sequence_part"
                     _cmd_char=""
                     _loop_idx=0
                     _max_loop_idx=${#_params_and_cmd}
 
                     while [ "$_loop_idx" -lt "$_max_loop_idx" ]; do
-                        # Pure POSIX shell way to get char at _loop_idx from _params_and_cmd
                         _temp_str_for_char="$_params_and_cmd"
                         _char_idx_iter=0
                         while [ "$_char_idx_iter" -lt "$_loop_idx" ]; do
                             _temp_str_for_char="${_temp_str_for_char#?}"
                             _char_idx_iter=$((_char_idx_iter + 1))
                         done
-                        _current_param_char="${_temp_str_for_char%"${_temp_str_for_char#?}"}" # Get first char of remaining
+                        _current_param_char="${_temp_str_for_char%"${_temp_str_for_char#?}"}"
 
                         case "$_current_param_char" in
-                            # Parameter characters or colon (for 24-bit color)
-                            [0-9\;:]) 
-                                # Continue, part of parameters
+                            [0-9\;:])
                                 ;;
-                            # Command character (e.g., 'm', 'H', 'J')
-                            [a-zA-Z]) 
+                            [a-zA-Z])
                                 _cmd_char="$_current_param_char"
-                                # Pure POSIX shell way to get substring from _loop_idx + 1 to end
                                 _temp_str_for_remainder="$_params_and_cmd"
                                 _remainder_idx_iter=0
-                                _num_chars_to_chop=$((_loop_idx + 1)) # Chop up to and including current command char
+                                _num_chars_to_chop=$((_loop_idx + 1))
                                 while [ "$_remainder_idx_iter" -lt "$_num_chars_to_chop" ]; do
                                     _temp_str_for_remainder="${_temp_str_for_remainder#?}"
                                     _remainder_idx_iter=$((_remainder_idx_iter + 1))
                                 done
                                 _remaining_input="$_temp_str_for_remainder"
-                                break # Found command, exit parameter loop
+                                break
                                 ;;
-                            # Unexpected character in sequence, treat as unterminated or malformed
-                            *) 
-                                _cmd_char="" # Ensure it's considered unterminated
-                                # If char is unexpected, we don't consume it from _params_and_cmd for _remaining_input
-                                # The outer loop will then process it as a literal char if it's not ESC.
-                                # Or, if we want to discard the rest of this broken sequence:
-                                _remaining_input="" # Effectively discards rest of _params_and_cmd
-                                break # Exit parameter loop
+                            *)
+                                _cmd_char=""
+                                _remaining_input=""
+                                break
                                 ;;
                         esac
                         _loop_idx=$((_loop_idx + 1))
                     done
 
-                    if [ -z "$_cmd_char" ]; then # Sequence didn't terminate as expected with a command char
-                         _result_str="${_result_str}${_LIB_MSG_ESC}[" # Append literal ESC[
-                         _remaining_input="$_sequence_part" # Continue after just ESC[
+                    if [ -z "$_cmd_char" ]; then
+                         _result_str="${_result_str}${_LIB_MSG_ESC}["
+                         _remaining_input="$_sequence_part"
                     fi
-                else # Not a CSI sequence (e.g., could be other ESC sequence or literal ESC)
-                    _result_str="${_result_str}${_LIB_MSG_ESC}" # Append literal ESC
-                    _remaining_input="$_after_esc" # Continue after ESC
+                else
+                    _result_str="${_result_str}${_LIB_MSG_ESC}"
+                    _remaining_input="$_after_esc"
                 fi
                 ;;
-            # Not starting with ESC
             *)
-                _char_to_add="${_remaining_input%"${_remaining_input#?}"}" # Get first char
+                _char_to_add="${_remaining_input%"${_remaining_input#?}"}"
                 _result_str="${_result_str}${_char_to_add}"
-                _remaining_input="${_remaining_input#?}" # Remove first char
+                _remaining_input="${_remaining_input#?}"
                 ;;
         esac
     done
     printf '%s' "$_result_str"
 }
+
 _print_msg_core() {
     _message_content="$1"
     _prefix_str="$2"
-    _is_stderr="$3" # "true" if stderr, "false" or empty for stdout
-    _no_final_newline="$4" # "true" if no final newline (for *n functions)
+    _is_stderr="$3"
+    _no_final_newline="$4"
 
     _is_tty=$_LIB_MSG_STDOUT_IS_TTY
     if [ "$_is_stderr" = "true" ]; then
         _is_tty=$_LIB_MSG_STDERR_IS_TTY
     fi
 
-    # Calculate the visible length of the prefix string by stripping ANSI codes
     _stripped_prefix_for_len=$(_lib_msg_strip_ansi_shell "$_prefix_str")
     _visible_prefix_len=${#_stripped_prefix_for_len}
+    _processed_output=""
 
-    # --- DIAGNOSTIC LOGGING (Round 2) ---
-# Removed diagnostic logging
-    # --- END DIAGNOSTIC ---
     if [ "$_is_tty" = "true" ] && [ "$_LIB_MSG_TERMINAL_WIDTH" -gt 0 ]; then
         _text_wrap_width=$((_LIB_MSG_TERMINAL_WIDTH - _visible_prefix_len))
 
-        # Only proceed with wrapping if the calculated content width is sensible
-        if [ "$_text_wrap_width" -ge 5 ]; then # Minimum sensible width to attempt wrapping
-            # _lib_msg_wrap_text outputs lines, each ending with \n.
-        # We pipe its output and prefix each line.
-        _processed_output=""
-        _first_line_processed=true
-        _indent_spaces=$(printf "%*s" "$_visible_prefix_len" "")
+        if [ "$_text_wrap_width" -ge 5 ]; then
+            _lib_msg_wrap_text "$_message_content" "$_text_wrap_width" # Populates global `lines`
 
-        # Use command substitution to capture all wrapped lines
-        _all_wrapped_lines=$(_lib_msg_wrap_text "$_message_content" "$_text_wrap_width")
-
-        # Check if _all_wrapped_lines is empty or just a newline (from empty input to wrapper)
-        if [ -z "$_all_wrapped_lines" ] || [ "$_all_wrapped_lines" = "$_LIB_MSG_NL" ]; then
-            if [ -z "$_message_content" ]; then # Original message was empty
-                 _processed_output="$_prefix_str" # Just the prefix
-            else # Wrapper produced nothing for a non-empty message (should not happen with current wrapper)
-                 _processed_output="${_prefix_str}${_message_content}"
+            if [ ${#lines[@]} -eq 0 ] && [ -n "$_message_content" ]; then
+                # Fallback if wrap_text produced no lines for non-empty content (should not happen)
+                lines+=("$_message_content")
+            elif [ ${#lines[@]} -eq 0 ] && [ -z "$_message_content" ]; then
+                # if message content is empty, wrap_text should have lines=("")
+                # This case should be covered by wrap_text's initial check.
+                # For safety, if lines is empty and message was empty, ensure one empty line.
+                 lines+=("")
             fi
-        else
-            # Iterate over lines from _all_wrapped_lines
-            # Iterate over lines from _all_wrapped_lines using a here document
-            # to avoid a subshell for the loop body, ensuring _processed_output is modified
-            # in the current shell context.
-            while IFS= read -r _wrapped_line; do
-                if $_first_line_processed; then
-                    _processed_output="${_prefix_str}${_wrapped_line}"
-                    _first_line_processed=false
+
+
+            _first_line_in_loop=true
+            _indent_spaces=$(printf "%*s" "$_visible_prefix_len" "")
+
+            for _wrapped_line_content in "${lines[@]}"; do
+                if $_first_line_in_loop; then
+                    _processed_output="${_prefix_str}${_wrapped_line_content}"
+                    _first_line_in_loop=false
                 else
-                    _processed_output="${_processed_output}\n${_indent_spaces}${_wrapped_line}"
+                    _processed_output="${_processed_output}${_LIB_MSG_NL}${_indent_spaces}${_wrapped_line_content}"
                 fi
-            done <<LIBMSG_HEREDOC_INPUT
-${_all_wrapped_lines}
-LIBMSG_HEREDOC_INPUT
+            done
+        else # Prefix too long for meaningful wrapping
+            _processed_output="${_prefix_str}${_message_content}"
         fi
+    else # Not a TTY or no terminal width for wrapping
+        _processed_output="${_prefix_str}${_message_content}"
+    fi
 
-        if [ "$_no_final_newline" = "true" ]; then
-            if [ "$_is_stderr" = "true" ]; then
-                printf '%b' "$_processed_output" >&2
-            else
-                printf '%b' "$_processed_output"
-            fi
-        else
-            if [ "$_is_stderr" = "true" ]; then
-                printf '%b\n' "$_processed_output" >&2
-            else
-                printf '%b\n' "$_processed_output"
-            fi  # Closes the inner if/else for _is_stderr
-            fi  # This correctly closes: if [ "$_no_final_newline" = "true" ] (L240)
-            # If we've reached here, wrapping was attempted and printing was done.
-            return # Now, exit _print_msg_core as the wrapping path is complete.
-        else # This 'else' is for: if [ "$_text_wrap_width" -ge 5 ] (L207)
-            # This effectively means the prefix is too long for the terminal width to allow meaningful wrapping.
-            : # No operation, will fall through to the non-wrapping part below
-        fi # End of sensible wrap width check
-    fi # End of TTY and terminal width check
-
-    # Fallback: No wrapping needed or possible (either not a TTY, or terminal width 0, or calculated content width too small)
     if [ "$_no_final_newline" = "true" ]; then
         if [ "$_is_stderr" = "true" ]; then
-            printf '%s%s' "$_prefix_str" "$_message_content" >&2
+            printf '%s' "$_processed_output" >&2
         else
-            printf '%s%s' "$_prefix_str" "$_message_content"
+            printf '%s' "$_processed_output"
         fi
     else
         if [ "$_is_stderr" = "true" ]; then
-            printf '%s%s\n' "$_prefix_str" "$_message_content" >&2
+            printf '%s\n' "$_processed_output" >&2
         else
-            printf '%s%s\n' "$_prefix_str" "$_message_content"
+            printf '%s\n' "$_processed_output"
         fi
     fi
 }
 
-# Helper function to determine if the script/shell can 'return'
-# (implies function context, likely sourced or within a function of an executed script)
 _lib_msg_is_return_valid() {
-    # Returns 0 (true) if 'return' is a valid operation, 1 (false) otherwise.
     if (return 0 2>/dev/null); then
-        return 0 # true, can return
+        return 0
     else
-        return 1 # false, cannot return, must exit
+        return 1
     fi
 }
 
 err() {
-    _prefix_tag=$(_lib_msg_colorize "E:" "$_LIB_MSG_CLR_RED" "$_LIB_MSG_STDERR_IS_TTY")
-    _print_msg_core "$1" "${SCRIPT_NAME:-lib_msg.sh}: ${_prefix_tag} " "true" ""
+    _prefix_tag=$(_lib_msg_colorize "E: " "$_LIB_MSG_CLR_RED" "$_LIB_MSG_STDERR_IS_TTY")
+    _print_msg_core "$1" "${SCRIPT_NAME:-lib_msg.sh}: ${_prefix_tag}" "true" ""
 }
 
 errn() {
-    _prefix_tag=$(_lib_msg_colorize "E:" "$_LIB_MSG_CLR_RED" "$_LIB_MSG_STDERR_IS_TTY")
-    _print_msg_core "$1" "${SCRIPT_NAME:-lib_msg.sh}: ${_prefix_tag} " "true" "true"
+    _prefix_tag=$(_lib_msg_colorize "E: " "$_LIB_MSG_CLR_RED" "$_LIB_MSG_STDERR_IS_TTY")
+    _print_msg_core "$1" "${SCRIPT_NAME:-lib_msg.sh}: ${_prefix_tag}" "true" "true"
 }
 
 warn() {
-    _prefix_tag=$(_lib_msg_colorize "W:" "$_LIB_MSG_CLR_YELLOW" "$_LIB_MSG_STDERR_IS_TTY")
-    _print_msg_core "$1" "${SCRIPT_NAME:-lib_msg.sh}: ${_prefix_tag} " "true" ""
+    _prefix_tag=$(_lib_msg_colorize "W: " "$_LIB_MSG_CLR_YELLOW" "$_LIB_MSG_STDERR_IS_TTY")
+    _print_msg_core "$1" "${SCRIPT_NAME:-lib_msg.sh}: ${_prefix_tag}" "true" ""
 }
 
 warnn() {
-    _prefix_tag=$(_lib_msg_colorize "W:" "$_LIB_MSG_CLR_YELLOW" "$_LIB_MSG_STDERR_IS_TTY")
-    _print_msg_core "$1" "${SCRIPT_NAME:-lib_msg.sh}: ${_prefix_tag} " "true" "true"
+    _prefix_tag=$(_lib_msg_colorize "W: " "$_LIB_MSG_CLR_YELLOW" "$_LIB_MSG_STDERR_IS_TTY")
+    _print_msg_core "$1" "${SCRIPT_NAME:-lib_msg.sh}: ${_prefix_tag}" "true" "true"
 }
 
 die() {
-    _error_code="$1"
+    _error_code_arg="$1"
     shift # Remove error code, remaining args are the message
-    _message="$*" # Combine all remaining arguments into the message string
+    _message_arg="$*" # Combine all remaining arguments into the message string
 
-    # Default error code if not provided or not a non-negative number string
-    _is_valid_format_for_exit_code=false
-    case "$_error_code" in
-        [0-9]|[0-9][0-9]*) # Matches one or more digits (e.g., "0", "123", "007")
-            _is_valid_format_for_exit_code=true ;;
-        *) # Does not match the pattern of one or more digits
-            _is_valid_format_for_exit_code=false ;;
+    _actual_error_code=1 # Default
+    _actual_message="$_message_arg"
+
+    case "$_error_code_arg" in
+        ''|*[!0-9]*) # Empty, or not all digits
+            _actual_message="${_error_code_arg}${_message_arg:+ }$_message_arg"
+            _actual_error_code=1
+            ;;
+        *[0-9]) # All digits
+            # Check if it's a valid number for exit status (0-255 typically, but sh allows wider for return)
+            # For simplicity, we'll assume any non-negative integer string is fine for the code itself.
+            _actual_error_code="$_error_code_arg"
+            # _actual_message remains $_message_arg
+            ;;
     esac
 
-    if ! $_is_valid_format_for_exit_code; then
-        _message="${_error_code}${_message:+ }$_message" # Prepend original $1 to message
-        _error_code=1 # Default error code to 1
-    fi
-    # Note: The original 'elif [ "$_error_code" -lt 0 ]' was effectively unreachable
-    # because if 'expr' matched (meaning $_error_code was a non-negative integer string),
-    # it wouldn't be less than 0. If 'expr' didn't match (e.g., for "-5" or "abc"),
-    # the first 'if' block was entered, $_error_code became 1, and the 'elif' was skipped.
-
-    _prefix_tag=$(_lib_msg_colorize "E:" "$_LIB_MSG_CLR_RED" "$_LIB_MSG_STDERR_IS_TTY")
-    _print_msg_core "$_message" "${SCRIPT_NAME:-lib_msg.sh}: ${_prefix_tag} " "true" ""
+    _prefix_tag=$(_lib_msg_colorize "E: " "$_LIB_MSG_CLR_RED" "$_LIB_MSG_STDERR_IS_TTY")
+    _print_msg_core "$_actual_message" "${SCRIPT_NAME:-lib_msg.sh}: ${_prefix_tag}" "true" ""
 
     if _lib_msg_is_return_valid; then
-        return "$_error_code"
+        return "$_actual_error_code"
     else
-        exit "$_error_code"
+        exit "$_actual_error_code"
     fi
 }
 
@@ -458,12 +410,11 @@ msgn() {
 }
 
 info() {
-    _prefix_tag=$(_lib_msg_colorize "I:" "$_LIB_MSG_CLR_BLUE" "$_LIB_MSG_STDOUT_IS_TTY")
-    _print_msg_core "$1" "${SCRIPT_NAME:-lib_msg.sh}: ${_prefix_tag} " "" ""
+    _prefix_tag=$(_lib_msg_colorize "I: " "$_LIB_MSG_CLR_BLUE" "$_LIB_MSG_STDOUT_IS_TTY")
+    _print_msg_core "$1" "${SCRIPT_NAME:-lib_msg.sh}: ${_prefix_tag}" "" ""
 }
 
 infon() {
-    _prefix_tag=$(_lib_msg_colorize "I:" "$_LIB_MSG_CLR_BLUE" "$_LIB_MSG_STDOUT_IS_TTY")
-    _print_msg_core "$1" "${SCRIPT_NAME:-lib_msg.sh}: ${_prefix_tag} " "" "true"
+    _prefix_tag=$(_lib_msg_colorize "I: " "$_LIB_MSG_CLR_BLUE" "$_LIB_MSG_STDOUT_IS_TTY")
+    _print_msg_core "$1" "${SCRIPT_NAME:-lib_msg.sh}: ${_prefix_tag}" "" "true"
 }
-

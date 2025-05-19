@@ -12,22 +12,32 @@ _lib_msg_force_reinit() {
     _lib_msg_init_colors
 }
 
-# Simulates TTY conditions by stubbing the '[' command for -t 1 and -t 2 checks,
+# Simulates TTY conditions by setting environment variables to control lib_msg.sh TTY detection,
 # then forces lib_msg.sh to re-initialize its TTY detection and color settings.
 #
 # Args:
-#   $1: Exit code for `[ -t 1 ]` (stdout TTY check). 0 for TTY, 1 for not TTY.
-#   $2: Exit code for `[ -t 2 ]` (stderr TTY check). 0 for TTY, 1 for not TTY.
+#   $1: Exit code for stdout TTY check. 0 for TTY, 1 for not TTY.
+#   $2: Exit code for stderr TTY check. 0 for TTY, 1 for not TTY.
 #
 # Example: simulate_tty_conditions 0 1  # stdout is TTY, stderr is not
 simulate_tty_conditions() {
     local stdout_tty_exit_code="$1"
     local stderr_tty_exit_code="$2"
 
-    stub '[' \
-        "-t 1 : exit ${stdout_tty_exit_code}" \
-        "-t 2 : exit ${stderr_tty_exit_code}"
+    # Convert exit codes to true/false strings
+    if [ "$stdout_tty_exit_code" -eq 0 ]; then
+        export LIB_MSG_FORCE_STDOUT_TTY="true"
+    else
+        export LIB_MSG_FORCE_STDOUT_TTY="false"
+    fi
 
+    if [ "$stderr_tty_exit_code" -eq 0 ]; then
+        export LIB_MSG_FORCE_STDERR_TTY="true"
+    else
+        export LIB_MSG_FORCE_STDERR_TTY="false"
+    fi
+
+    # Force library to re-initialize with our settings
     _lib_msg_force_reinit
 }
 

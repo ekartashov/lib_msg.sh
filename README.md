@@ -4,12 +4,12 @@
 
 ## Features
 
--   Standardized message prefixes for errors (`E:`), warnings (`W:`), and general messages.
+-   Standardized message prefixes for information (`I:`), errors (`E:`), warnings (`W:`), and general messages.
 -   Functions for messages with and without trailing newlines (e.g., `msg` vs `msgn`).
 -   Automatic TTY detection for stdout and stderr.
 -   Text wrapping based on terminal width (via `COLUMNS` environment variable) if outputting to a TTY.
 -   ANSI color support for messages if outputting to a TTY.
--   `die` function to print an error message and exit with a specified code.
+-   `die` function to print an error message and exit with a specified code (or return if sourced).
 
 ## Usage
 
@@ -25,6 +25,7 @@
 
     # Your script logic here
     msg "Script started."
+    info "Here's some information."
     warn "Something to be cautious about."
     err "An error occurred (but not fatal)."
     # die 1 "A fatal error occurred, exiting."
@@ -44,50 +45,16 @@
 
 -   `msg "message"`: Prints a general message with a prefix and newline.
 -   `msgn "message"`: Prints a general message with a prefix but no trailing newline.
+-   `info "message"`: Prints an information message with a blue "I: " prefix and newline.
+-   `infon "message"`: Prints an information message with a blue "I: " prefix but no trailing newline.
 
 #### Error Output (stderr)
 
--   `err "message"`: Prints an error message with an "E: " prefix and newline.
--   `errn "message"`: Prints an error message with an "E: " prefix but no trailing newline.
--   `warn "message"`: Prints a warning message with a "W: " prefix and newline.
--   `warnn "message"`: Prints a warning message with a "W: " prefix but no trailing newline.
--   `die <exit_code> "message"`: Prints an error message with an "E: " prefix, then exits the script with `<exit_code>`.
-
-#### Colored Output Functions
-
-These functions behave like their non-colored counterparts but add ANSI colors if the output stream is a TTY.
-
-**General Messages (stdout, prefixed with `SCRIPT_NAME: `):**
-- `msg_red "message"`, `msgn_red "message"`
-- `msg_green "message"`, `msgn_green "message"`
-- `msg_yellow "message"`, `msgn_yellow "message"`
-- `msg_blue "message"`, `msgn_blue "message"`
-- `msg_magenta "message"`, `msgn_magenta "message"`
-- `msg_cyan "message"`, `msgn_cyan "message"`
-- `msg_white "message"`, `msgn_white "message"`
-- `msg_black "message"`, `msgn_black "message"`
-- `msg_bold "message"`, `msgn_bold "message"`
-
-**Error Messages (stderr, prefixed with `SCRIPT_NAME: E: `):**
-- `err_red "message"`, `errn_red "message"`
-- `err_green "message"`, `errn_green "message"` (useful for success messages to stderr)
-- `err_yellow "message"`, `errn_yellow "message"`
-- `err_blue "message"`, `errn_blue "message"`
-- `err_bold "message"`, `errn_bold "message"`
-
-**Warning Messages (stderr, prefixed with `SCRIPT_NAME: W: `):**
-- `warn_red "message"`, `warnn_red "message"`
-- `warn_green "message"`, `warnn_green "message"`
-- `warn_yellow "message"`, `warnn_yellow "message"`
-- `warn_blue "message"`, `warnn_blue "message"`
-- `warn_bold "message"`, `warnn_bold "message"`
-
-**Fatal Error Messages (stderr, prefixed with `SCRIPT_NAME: E: `, then exit):**
-- `die_red <exit_code> "message"`
-- `die_green <exit_code> "message"`
-- `die_yellow <exit_code> "message"`
-- `die_blue <exit_code> "message"`
-- `die_bold <exit_code> "message"`
+-   `err "message"`: Prints an error message with a red "E: " prefix and newline.
+-   `errn "message"`: Prints an error message with a red "E: " prefix but no trailing newline.
+-   `warn "message"`: Prints a warning message with a yellow "W: " prefix and newline.
+-   `warnn "message"`: Prints a warning message with a yellow "W: " prefix but no trailing newline.
+-   `die <exit_code> "message"`: Prints an error message with a red "E: " prefix, then exits the script with `<exit_code>`. If the function is called from a sourced script, it returns with the error code instead of exiting.
 
 ## Testing
 
@@ -107,7 +74,15 @@ The library includes a test suite using [BATS (Bash Automated Testing System)](h
         ```
     *   **Other systems:** Refer to the [BATS installation guide](https://bats-core.readthedocs.io/en/stable/installation.html).
 
-2.  **Run Tests:**
+2.  **Initialize Required Submodules:**
+    The test suite relies on several BATS helper libraries that are included as Git submodules:
+    
+    ```sh
+    git submodule init
+    git submodule update
+    ```
+
+3.  **Run Tests:**
     Navigate to the root directory of this project (where `lib_msg.sh` and the `test` directory are located) and run:
 
     ```sh
@@ -174,7 +149,7 @@ The BATS helper libraries (`bats-assert`, `bats-support`, `bats-mock`) are inclu
 
 ## How It Works
 
--   **TTY Detection:** On initialization (`_lib_msg_init_detection`), the library checks if stdout (file descriptor 1) and stderr (file descriptor 2) are connected to a terminal using `[ -t 1 ]` and `[ -t 2 ]`.
+-   **TTY Detection:** On initialization (`_lib_msg_init_detection`), the library checks if stdout (file descriptor 1) and stderr (file descriptor 2) are connected to a terminal using `[ -t 1 ]` and `[ -t 2 ]`. This can be overridden with the environment variables `LIB_MSG_FORCE_STDOUT_TTY` and `LIB_MSG_FORCE_STDERR_TTY` (useful for testing).
 -   **Terminal Width:** If a TTY is detected, it attempts to get the terminal width from the `COLUMNS` environment variable. If `COLUMNS` is not set or invalid, wrapping is disabled.
 -   **Color Initialization:** If a TTY is detected, ANSI escape codes for various colors and styles are initialized (`_lib_msg_init_colors`). Otherwise, color variables remain empty, effectively disabling colored output.
 -   **Wrapping Logic (`_lib_msg_wrap_text`):**
@@ -186,13 +161,17 @@ The BATS helper libraries (`bats-assert`, `bats-support`, `bats-mock`) are inclu
     -   This internal function handles all message printing.
     -   It determines the correct output stream (stdout/stderr).
     -   Applies color using `_lib_msg_colorize` if a color code is provided and the stream is a TTY.
-    -   If the stream is a TTY and terminal width is known, it uses `_lib_msg_wrap_text` to wrap the (potentially colored) message content. Each wrapped line is then prefixed.
+    -   If the stream is a TTY and terminal width is known, it uses `_lib_msg_wrap_text` to wrap the message content. Each wrapped line is then prefixed.
     -   If no TTY or no width, it prints the message with the prefix directly.
     -   Handles whether a final newline should be printed.
+-   **Context-Aware Exiting (`die` function):**
+    -   Detects whether it's being called from a sourced context or directly executed script using `_lib_msg_is_return_valid()`.
+    -   If called in a sourced script/function, uses `return` with the error code to allow the calling script to continue.
+    -   If called in a directly executed script, uses `exit` to terminate the entire script.
 
 ## Limitations and Known Issues
 
--   **ANSI in Wrapped Text:** The current text wrapping logic in `_lib_msg_wrap_text` is not fully ANSI-aware. If a message is colored *before* wrapping, the ANSI escape codes contribute to the string length seen by the wrapper. This can lead to lines being wrapped slightly shorter than expected visually. A more robust solution would involve stripping ANSI codes for length calculations during wrapping and re-applying them, or making the wrapper itself ANSI-aware.
--   **Complex Scripts in Prefixes:** Prefixes are currently treated as plain text for length calculation. If prefixes were to contain ANSI codes, similar wrapping issues would arise.
+-   **ANSI in Wrapped Text:** The current text wrapping logic in `_lib_msg_wrap_text` is not fully ANSI-aware. If a message is colored *before* wrapping, the ANSI escape codes contribute to the string length seen by the wrapper. This can lead to lines being wrapped slightly shorter than expected visually. To mitigate this, the library handles ANSI stripping for length calculations using `_lib_msg_strip_ansi_shell`.
+-   **Complex Scripts in Prefixes:** Prefixes are currently treated as plain text for length calculation. If prefixes contain ANSI codes, the library handles this correctly by stripping ANSI codes when calculating lengths.
 -   **`COLUMNS` Variable:** Relies on the `COLUMNS` environment variable being correctly set and updated for accurate terminal width. Some terminal emulators or environments might not update this reliably.
 -   **Word Splitting:** The wrapper splits words based on single spaces. Multiple consecutive spaces in the input text might lead to slightly different spacing in the wrapped output compared to the input, as empty "words" might be processed.

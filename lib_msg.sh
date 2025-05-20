@@ -88,10 +88,8 @@ _LIB_MSG_ESC=$(printf '\033')
 _LIB_MSG_RS=$(printf '\036') # Record Separator (unlikely to appear in normal text)
 # --- End lib_msg TTY and Width Detection ---
 
-# Keep global array for tests and legacy usage
-# This is a non-POSIX feature but will be used only for test compatibility
-# shellcheck disable=SC2034
-lines=""
+# The record separator is used internally for line delimiting
+# making the code POSIX-compatible without relying on arrays
 
 # --- ANSI Stripping Implementations ---
 
@@ -183,17 +181,11 @@ fi
 # --- Text Wrapping Implementations ---
 
 # POSIX sh implementation (no arrays) for wrapping text
-# This builds a local lines array for test compatibility but
-# uses $_LIB_MSG_RS (record separator) to return the actual data
+# Uses $_LIB_MSG_RS (record separator) to delimit lines
 _lib_msg_wrap_text_sh() {
     _text_to_wrap="$1"
     _max_width="$2"
     _result_lines=""
-    _lines_array_idx=0
-    
-    # Clear the global array (replace with empty string to remain in POSIX sh)
-    # shellcheck disable=SC2034
-    lines=""
     
     _temp_text_for_check="$_text_to_wrap"
     _old_ifs_check="$IFS"
@@ -211,16 +203,6 @@ _lib_msg_wrap_text_sh() {
         else
             _result_lines="${_result_lines}${_LIB_MSG_RS}"
         fi
-        # For test compatibility, we need to create the global array
-        # but in POSIX sh-compatible way
-        if [ $_lines_array_idx -eq 0 ]; then
-            # shellcheck disable=SC2034
-            lines=""
-        else
-            # shellcheck disable=SC2034
-            lines="${lines}${_LIB_MSG_RS}"
-        fi
-        _lines_array_idx=$((_lines_array_idx + 1))
         
         printf "%s" "$_result_lines"
         return
@@ -228,17 +210,6 @@ _lib_msg_wrap_text_sh() {
 
     if [ "$_max_width" -le 0 ]; then # No wrapping if width is 0 or less
         _result_lines="$_text_to_wrap"
-        
-        # For test compatibility, we need to create the global array
-        # but in POSIX sh-compatible way
-        if [ $_lines_array_idx -eq 0 ]; then
-            # shellcheck disable=SC2034
-            lines="$_text_to_wrap"
-        else
-            # shellcheck disable=SC2034
-            lines="${lines}${_LIB_MSG_RS}${_text_to_wrap}"
-        fi
-        _lines_array_idx=$((_lines_array_idx + 1))
         
         printf "%s" "$_result_lines"
         return
@@ -277,17 +248,6 @@ _lib_msg_wrap_text_sh() {
                         _result_lines="${_result_lines}${_LIB_MSG_RS}${_chunk}"
                     fi
                     
-                    # For test compatibility, we need to create the global array
-                    # but in POSIX sh-compatible way
-                    if [ $_lines_array_idx -eq 0 ]; then
-                        # shellcheck disable=SC2034
-                        lines="$_chunk"
-                    else
-                        # shellcheck disable=SC2034
-                        lines="${lines}${_LIB_MSG_RS}${_chunk}"
-                    fi
-                    _lines_array_idx=$((_lines_array_idx + 1))
-                    
                     _temp_long_word=${_temp_long_word#"$_chunk"}
                 done
                 if [ -n "$_temp_long_word" ]; then
@@ -312,17 +272,6 @@ _lib_msg_wrap_text_sh() {
                 _result_lines="${_result_lines}${_LIB_MSG_RS}${_current_line}"
             fi
             
-            # For test compatibility, we need to create the global array
-            # but in POSIX sh-compatible way
-            if [ $_lines_array_idx -eq 0 ]; then
-                # shellcheck disable=SC2034
-                lines="$_current_line"
-            else
-                # shellcheck disable=SC2034
-                lines="${lines}${_LIB_MSG_RS}${_current_line}"
-            fi
-            _lines_array_idx=$((_lines_array_idx + 1))
-            
             if [ "$_word_len" -gt "$_max_width" ]; then
                 _temp_long_word="$_word"
                 while [ "${#_temp_long_word}" -gt "$_max_width" ]; do
@@ -338,12 +287,6 @@ _lib_msg_wrap_text_sh() {
                     
                     # Add line to result
                     _result_lines="${_result_lines}${_LIB_MSG_RS}${_chunk}"
-                    
-                    # For test compatibility, we need to create the global array
-                    # but in POSIX sh-compatible way
-                    # shellcheck disable=SC2034
-                    lines="${lines}${_LIB_MSG_RS}${_chunk}"
-                    _lines_array_idx=$((_lines_array_idx + 1))
                     
                     _temp_long_word=${_temp_long_word#"$_chunk"}
                 done
@@ -368,31 +311,10 @@ _lib_msg_wrap_text_sh() {
         else
             _result_lines="${_result_lines}${_LIB_MSG_RS}${_current_line}"
         fi
-        
-        # For test compatibility, we need to create the global array
-        # but in POSIX sh-compatible way
-        if [ $_lines_array_idx -eq 0 ]; then
-            # shellcheck disable=SC2034
-            lines="$_current_line"
-        else
-            # shellcheck disable=SC2034
-            lines="${lines}${_LIB_MSG_RS}${_current_line}"
-        fi
-        _lines_array_idx=$((_lines_array_idx + 1))
     elif [ $# -gt 0 ] && [ -z "$_result_lines" ] && ! $_first_word_on_current_line ; then
         # This case handles if _text_to_wrap was a single word shorter than _max_width
         # and the loop finished with _current_line holding that word, but it wasn't added.
         _result_lines="$_current_line"
-        
-        # For test compatibility
-        if [ $_lines_array_idx -eq 0 ]; then
-            # shellcheck disable=SC2034
-            lines="$_current_line"
-        else
-            # shellcheck disable=SC2034
-            lines="${lines}${_LIB_MSG_RS}${_current_line}"
-        fi
-        _lines_array_idx=$((_lines_array_idx + 1))
     fi
     
     printf "%s" "$_result_lines"
@@ -404,22 +326,13 @@ _lib_msg_wrap_text_awk() {
     _text_to_wrap="$1"
     _max_width="$2"
     
-    # Clear the global array (replace with empty string to remain in POSIX sh)
-    # shellcheck disable=SC2034
-    lines=""
-    
     if [ -z "$_text_to_wrap" ]; then # Handle empty string special case
-        # shellcheck disable=SC2034
-        # Initialize the lines array with a single empty element for test compatibility
-        lines=""
-        # Return empty string with the record separator
+        # Return empty string
         printf "%s" ""
         return
     fi
     
     if [ "$_max_width" -le 0 ]; then # No wrapping if width is 0 or less
-        # shellcheck disable=SC2034
-        lines="$_text_to_wrap"
         printf "%s" "$_text_to_wrap"
         return
     fi
@@ -501,43 +414,11 @@ _lib_msg_wrap_text_awk() {
     }
     
     END {
-        # Output the total line count first (for test compatibility)
-        printf("%d%s%s", line_count, rs, result);
+        # Output the result directly
+        printf("%s", result);
     }')
     
-    # Extract line count and result
-    _line_count=${_result%%"$_LIB_MSG_RS"*}
-    _processed_result=${_result#*"$_LIB_MSG_RS"}
-    
-    # For test compatibility, convert back to lines array format
-    _remaining_lines="$_processed_result"
-    _i=0
-    while [ $_i -lt "$_line_count" ] && [ -n "$_remaining_lines" ]; do
-        # Extract current line
-        case "$_remaining_lines" in
-            *"$_LIB_MSG_RS"*)
-                _current_line="${_remaining_lines%%"$_LIB_MSG_RS"*}"
-                _remaining_lines="${_remaining_lines#*"$_LIB_MSG_RS"}"
-                ;;
-            *)
-                _current_line="$_remaining_lines"
-                _remaining_lines=""
-                ;;
-        esac
-        
-        # Add to lines
-        if [ $_i -eq 0 ]; then
-            # shellcheck disable=SC2034
-            lines="$_current_line"
-        else
-            # shellcheck disable=SC2034
-            lines="${lines}${_LIB_MSG_RS}${_current_line}"
-        fi
-        
-        _i=$((_i + 1))
-    done
-    
-    printf "%s" "$_processed_result"
+    printf "%s" "$_result"
 }
 
 # This wrapper converts our new RS-delimited string back to arrays for tests
@@ -547,17 +428,9 @@ _lib_msg_wrap_text() {
     _text_to_wrap="$1"
     _max_width="$2"
     
-    # Important: Unset and recreate the lines array for each call
-    # This is critical for test compatibility - we need a clean array each time
-    unset lines
-    # shellcheck disable=SC2034
-    lines=()
-    
     # Handle the special case of empty input or only whitespace - always create at least one line
     # First check if completely empty
     if [ -z "$_text_to_wrap" ]; then
-        # shellcheck disable=SC2034
-        lines=("")
         printf "%s" ""
         return
     fi
@@ -567,16 +440,12 @@ _lib_msg_wrap_text() {
     _text_no_spaces="$(printf '%s' "$_text_to_wrap" | tr -d '[:space:]')"
     if [ -z "$_text_no_spaces" ]; then
         # It's only whitespace, treat as empty
-        # shellcheck disable=SC2034
-        lines=("")
         printf "%s" ""
         return
     fi
     
     # Handle special case of width <= 0 (no wrapping)
     if [ "$_max_width" -le 0 ]; then
-        # shellcheck disable=SC2034
-        lines=("$_text_to_wrap")
         printf "%s" "$_text_to_wrap"
         return
     fi
@@ -588,29 +457,7 @@ _lib_msg_wrap_text() {
         _result=$(_lib_msg_wrap_text_sh "$_text_to_wrap" "$_max_width")
     fi
     
-    # Convert the RS-delimited string back to a bash array for tests
-    _remaining_lines="$_result"
-    
-    # Process each line from the RS-delimited string
-    while [ -n "$_remaining_lines" ]; do
-        # Extract current line up to the record separator
-        case "$_remaining_lines" in
-            *"$_LIB_MSG_RS"*)
-                _current_line="${_remaining_lines%%"$_LIB_MSG_RS"*}"
-                _remaining_lines="${_remaining_lines#*"$_LIB_MSG_RS"}"
-                ;;
-            *)
-                _current_line="$_remaining_lines"
-                _remaining_lines=""
-                ;;
-        esac
-        
-        # Add to lines array for test compatibility - using bash array syntax since we're in BATS
-        # shellcheck disable=SC2034
-        lines+=("$_current_line")
-    done
-    
-    # Return the RS-delimited string
+    # Return the RS-delimited string directly
     printf "%s" "$_result"
 }
 

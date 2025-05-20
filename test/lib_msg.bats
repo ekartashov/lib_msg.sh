@@ -1,108 +1,59 @@
 #!/usr/bin/env bats
 
 # BATS file-level setup and teardown for terminal width management
-_bats_original_cols_env="" # To store original COLUMNS env var
-_bats_original_stty_cols="" # To store original stty reported columns
+# These variables are used by the terminal management helpers in lib_msg_test_helpers.bash
+_bats_saved_stty_cols=""
+_bats_saved_columns_env=""
 
 setup_file() {
-    # Store original COLUMNS env var if set
-    if [ -n "${COLUMNS+x}" ]; then # Check if COLUMNS is set (even if empty)
-        _bats_original_cols_env="$COLUMNS"
-    fi
-
-    # Attempt to set and get stty columns, but defensively
     echo "setup_file: Checking conditions via environment variables..." >&3
-    local stty_exists_code
-    command -v stty >/dev/null
-    stty_exists_code=$?
-    echo "setup_file: command -v stty exit code: $stty_exists_code" >&3
+    echo "setup_file: command -v stty exit code: $(command -v stty >/dev/null; echo $?)" >&3
+    echo "setup_file: _BATS_TEST_STDIN_IS_TTY='$_BATS_TEST_STDIN_IS_TTY', resolved stdin_is_tty='$([ "$_BATS_TEST_STDIN_IS_TTY" = "true" ] && echo true || echo false)'" >&3
+    echo "setup_file: _BATS_TEST_STDOUT_IS_TTY='$_BATS_TEST_STDOUT_IS_TTY', resolved stdout_is_tty='$([ "$_BATS_TEST_STDOUT_IS_TTY" = "true" ] && echo true || echo false)'" >&3
 
-    # Use environment variables for TTY checks, controlled by the test case
-    local stdin_is_tty="false"
-    if [ "$_BATS_TEST_STDIN_IS_TTY" = "true" ]; then
-        stdin_is_tty="true"
+    # Default TTY vars to false if not set
+    if [ -z "$_BATS_TEST_STDIN_IS_TTY" ]; then
+        export _BATS_TEST_STDIN_IS_TTY="false"
     fi
-    echo "setup_file: _BATS_TEST_STDIN_IS_TTY='$_BATS_TEST_STDIN_IS_TTY', resolved stdin_is_tty='$stdin_is_tty'" >&3
     
-    local stdout_is_tty="false"
-    if [ "$_BATS_TEST_STDOUT_IS_TTY" = "true" ]; then
-        stdout_is_tty="true"
+    if [ -z "$_BATS_TEST_STDOUT_IS_TTY" ]; then
+        export _BATS_TEST_STDOUT_IS_TTY="false"
     fi
-    echo "setup_file: _BATS_TEST_STDOUT_IS_TTY='$_BATS_TEST_STDOUT_IS_TTY', resolved stdout_is_tty='$stdout_is_tty'" >&3
 
-    if [ "$stty_exists_code" -eq 0 ] && [ "$stdin_is_tty" = "true" ] && [ "$stdout_is_tty" = "true" ]; then
-        echo "setup_file: Inside 'if stty available and TTYs detected' block. Attempting to get stty size." >&3
-        local _stty_output
-        _stty_output=$(stty size) # This is the command we are interested in
-        echo "setup_file: _stty_output is '$_stty_output'" >&3
-        if [ -n "$_stty_output" ]; then
-            _bats_original_stty_cols=${_stty_output##* }
-            stty cols 80 2>/dev/null # Attempt to set to a default for tests
-        fi
-    fi
-    # Ensure COLUMNS is set to a default for tests, overriding stty if necessary for consistency
-    export COLUMNS=80
+    # Save current terminal settings - don't fail if this fails
+    _lib_msg_test_save_terminal_settings || true
+    
+    # Set terminal width to a standard value for tests
+    _lib_msg_test_set_terminal_width 80
 }
 
 teardown_file() {
-    # Restore original stty columns if they were captured and stty is available
-    # For teardown, we can use direct -t checks if stubs are managed per test or globally for 'stty'
-    # Or, rely on the same env var convention if we want to be super consistent,
-    # but direct check is fine if stty itself is reliably stubbed/unstubbed.
-    # Let's assume direct check is okay here for now, as the main issue is setup_file's TTY detection.
-    local stty_exists_code
-    command -v stty >/dev/null
-    stty_exists_code=$?
-
-    local tdf_stdin_is_tty="false"
-    if [ "$_BATS_TEST_STDIN_IS_TTY" = "true" ]; then
-        tdf_stdin_is_tty="true"
-    fi
-    
-    local tdf_stdout_is_tty="false"
-    if [ "$_BATS_TEST_STDOUT_IS_TTY" = "true" ]; then
-        tdf_stdout_is_tty="true"
-    fi
-
-    if [ -n "$_bats_original_stty_cols" ] && [ "$stty_exists_code" -eq 0 ] && [ "$tdf_stdin_is_tty" = "true" ] && [ "$tdf_stdout_is_tty" = "true" ]; then
-        stty cols "$_bats_original_stty_cols" 2>/dev/null
-    fi
-
-    # Restore original COLUMNS env var
-    if [ -n "${_bats_original_cols_env+x}" ]; then # Check if original was set
-        export COLUMNS="$_bats_original_cols_env"
-    else
-        unset COLUMNS # If it wasn't set originally, unset it
-    fi
-    unset _bats_original_cols_env
-    unset _bats_original_stty_cols
-    # unstub test 2>/dev/null # No longer globally stubbing 'test'
+    # Restore previously saved terminal settings
+    _lib_msg_test_restore_terminal_settings
 }
 
 # --- Tests for setup_file and teardown_file stty/COLUMNS logic ---
 
 @test "setup_file/teardown_file: stty available, stty size provides columns" {
     # Local context for this test
-    local _bats_original_stty_cols_local=""
-    local _bats_original_cols_env_local=""
+    local _bats_saved_stty_cols_local=""
+    local _bats_saved_columns_env_local=""
     local original_columns_value="99" # Simulate pre-existing COLUMNS
 
+    # Set mock output for stty size
+    export LIB_MSG_TEST_STTY_SIZE_OUTPUT="120"
+    
     # Assign to global vars that setup_file/teardown_file use
-    _bats_original_stty_cols="$_bats_original_stty_cols_local"
-    _bats_original_cols_env="$_bats_original_cols_env_local"
+    _bats_saved_stty_cols="$_bats_saved_stty_cols_local"
+    _bats_saved_columns_env="$_bats_saved_columns_env_local"
     export COLUMNS="$original_columns_value"
     export _BATS_TEST_STDIN_IS_TTY="true"
     export _BATS_TEST_STDOUT_IS_TTY="true"
-    
-    stub stty \
-        "size : echo \"120\"" \
-        "cols 80 : : : 0" \
-        "cols 120 : : : 0"
 
     setup_file
 
-    assert_equal "$_bats_original_stty_cols" "120" "Original stty cols should be captured"
-    assert_equal "$_bats_original_cols_env" "$original_columns_value" "Original COLUMNS env should be captured"
+    assert_equal "$_bats_saved_stty_cols" "120" "Original stty cols should be captured"
+    assert_equal "$_bats_saved_columns_env" "$original_columns_value" "Original COLUMNS env should be captured"
     assert_equal "$COLUMNS" "80" "COLUMNS should be set to 80 by setup_file"
 
     # Now test teardown_file
@@ -111,98 +62,122 @@ teardown_file() {
     teardown_file # Direct call
 
     assert_equal "$COLUMNS" "$original_columns_value" "COLUMNS should be restored"
-    # _bats_original_stty_cols and _bats_original_cols_env are unset by teardown_file
-    assert_equal "$_bats_original_stty_cols" "" "_bats_original_stty_cols should be unset"
-    assert_equal "$_bats_original_cols_env" "" "_bats_original_cols_env should be unset"
+    # _bats_saved_stty_cols and _bats_saved_columns_env are unset by teardown_file
+    assert_equal "$_bats_saved_stty_cols" "" "_bats_saved_stty_cols should be unset"
+    assert_equal "$_bats_saved_columns_env" "" "_bats_saved_columns_env should be unset"
 
-    unstub stty
+    # Clean up
+    unset LIB_MSG_TEST_STTY_SIZE_OUTPUT
     # Restore COLUMNS just in case, though teardown_file should handle it
     if [ -n "${original_columns_value+x}" ]; then export COLUMNS="$original_columns_value"; else unset COLUMNS; fi
     unset _BATS_TEST_STDIN_IS_TTY _BATS_TEST_STDOUT_IS_TTY
 }
 
 @test "setup_file/teardown_file: stty available, stty size returns empty" {
-    _bats_original_stty_cols=""
-    _bats_original_cols_env=""
-    export COLUMNS="99" # Pre-existing
+    # Local context for this test
+    local _bats_saved_stty_cols_local=""
+    local _bats_saved_columns_env_local=""
+    local original_columns_value="99" # Simulate pre-existing COLUMNS
 
+    # Set mock for stty size to be empty but exit success
+    export LIB_MSG_TEST_STTY_SIZE_OUTPUT=""
+    
+    # Assign to global vars that setup_file/teardown_file use
+    _bats_saved_stty_cols="$_bats_saved_stty_cols_local"
+    _bats_saved_columns_env="$_bats_saved_columns_env_local"
+    export COLUMNS="$original_columns_value"
     export _BATS_TEST_STDIN_IS_TTY="true"
     export _BATS_TEST_STDOUT_IS_TTY="true"
-    stub stty "size : : : 0" # stty size outputs nothing to stdout and exits 0
 
     setup_file
 
-    assert_equal "$_bats_original_stty_cols" "" "Original stty cols should be empty"
-    assert_equal "$_bats_original_cols_env" "99"
-    assert_equal "$COLUMNS" "80"
+    assert_equal "$_bats_saved_stty_cols" "" "Original stty cols should be empty"
+    assert_equal "$_bats_saved_columns_env" "$original_columns_value" "Original COLUMNS env should be captured"
+    assert_equal "$COLUMNS" "80" "COLUMNS should be set to 80 by setup_file"
 
-    # Teardown should not call 'stty cols ""'
-    # We ensure no 'stty cols' with a non-empty arg was defined in the stub for restoration
-    # If 'stty cols ""' were called, it would be an error or require a specific stub.
-    # The existing 'stty' stub only has "size : echo ''". If other 'stty' calls happen, the test fails.
+    # Teardown should not call 'stty cols ""' when saved cols is empty
     teardown_file
 
-    assert_equal "$COLUMNS" "99"
-    assert_equal "$_bats_original_stty_cols" ""
-    assert_equal "$_bats_original_cols_env" ""
+    assert_equal "$COLUMNS" "$original_columns_value" "COLUMNS should be restored"
+    assert_equal "$_bats_saved_stty_cols" "" "_bats_saved_stty_cols should be unset"
+    assert_equal "$_bats_saved_columns_env" "" "_bats_saved_columns_env should be unset"
 
-    unstub stty
-    export COLUMNS="99" # Restore original for safety, though teardown_file should handle it
+    # Clean up
+    unset LIB_MSG_TEST_STTY_SIZE_OUTPUT
+    # Restore COLUMNS just in case, though teardown_file should handle it
+    if [ -n "${original_columns_value+x}" ]; then export COLUMNS="$original_columns_value"; else unset COLUMNS; fi
     unset _BATS_TEST_STDIN_IS_TTY _BATS_TEST_STDOUT_IS_TTY
 }
 
 @test "setup_file/teardown_file: stty command not available" {
-    _bats_original_stty_cols=""
-    _bats_original_cols_env=""
-    export COLUMNS="99"
-    local original_path="$PATH"
-    export PATH="/usr/bin:/bin" # A minimal PATH unlikely to contain a test 'stty'
-                                # or an empty PATH: export PATH=""
+    # Local context for this test
+    local _bats_saved_stty_cols_local=""
+    local _bats_saved_columns_env_local=""
+    local original_columns_value="99" # Simulate pre-existing COLUMNS
 
-    # No stubs needed for stty or command, as PATH manipulation handles availability.
-    # No need to set _BATS_TEST_STDIN_IS_TTY or _BATS_TEST_STDOUT_IS_TTY as stty shouldn't be found.
+    # Assign to global vars that setup_file/teardown_file use
+    _bats_saved_stty_cols="$_bats_saved_stty_cols_local"
+    _bats_saved_columns_env="$_bats_saved_columns_env_local"
+    export COLUMNS="$original_columns_value"
+    
+    # Set TTY environment vars if needed for completeness
+    export _BATS_TEST_STDIN_IS_TTY="true"
+    export _BATS_TEST_STDOUT_IS_TTY="true"
+
+    # Simulate stty unavailable
+    export LIB_MSG_TEST_STTY_UNAVAILABLE="true"
 
     setup_file
 
-    assert_equal "$_bats_original_stty_cols" "" "Original stty cols should be empty"
-    assert_equal "$_bats_original_cols_env" "99"
-    assert_equal "$COLUMNS" "80"
+    assert_equal "$_bats_saved_stty_cols" "" "Original stty cols should be empty when stty unavailable"
+    assert_equal "$_bats_saved_columns_env" "$original_columns_value" "Original COLUMNS env should be captured"
+    assert_equal "$COLUMNS" "80" "COLUMNS should be set to 80 by setup_file"
 
     teardown_file # Should not attempt stty operations
 
-    assert_equal "$COLUMNS" "99"
-    assert_equal "$_bats_original_stty_cols" ""
-    assert_equal "$_bats_original_cols_env" ""
+    assert_equal "$COLUMNS" "$original_columns_value" "COLUMNS should be restored"
+    assert_equal "$_bats_saved_stty_cols" "" "_bats_saved_stty_cols should be unset"
+    assert_equal "$_bats_saved_columns_env" "" "_bats_saved_columns_env should be unset"
 
-    export PATH="$original_path" # Restore original PATH
-    export COLUMNS="99" # Restore for safety
+    # Restore original environment
+    unset LIB_MSG_TEST_STTY_UNAVAILABLE
+    # Restore COLUMNS just in case, though teardown_file should handle it
+    if [ -n "${original_columns_value+x}" ]; then export COLUMNS="$original_columns_value"; else unset COLUMNS; fi
+    unset _BATS_TEST_STDIN_IS_TTY _BATS_TEST_STDOUT_IS_TTY
 }
 
 @test "setup_file/teardown_file: not a TTY" {
-    _bats_original_stty_cols=""
-    _bats_original_cols_env=""
-    export COLUMNS="99"
+    # Local context for this test
+    local _bats_saved_stty_cols_local=""
+    local _bats_saved_columns_env_local=""
+    local original_columns_value="99" # Simulate pre-existing COLUMNS
 
+    # Assign to global vars that setup_file/teardown_file use
+    _bats_saved_stty_cols="$_bats_saved_stty_cols_local"
+    _bats_saved_columns_env="$_bats_saved_columns_env_local"
+    export COLUMNS="$original_columns_value"
+    
     # Simulate stdin not being a TTY, stdout being a TTY
     export _BATS_TEST_STDIN_IS_TTY="false"
     export _BATS_TEST_STDOUT_IS_TTY="true"
-    # No stty stub needed, as it shouldn't be called if TTY checks fail as intended.
-    # No test stubs needed as TTY detection uses env vars.
+    
+    # No stty stub needed, as it shouldn't be called if TTY checks fail in our helper functions
 
     setup_file
 
-    assert_equal "$_bats_original_stty_cols" "" "Original stty cols should be empty as not a TTY"
-    assert_equal "$_bats_original_cols_env" "99"
-    assert_equal "$COLUMNS" "80"
+    assert_equal "$_bats_saved_stty_cols" "" "Original stty cols should be empty as not a TTY"
+    assert_equal "$_bats_saved_columns_env" "$original_columns_value" "Original COLUMNS env should be captured"
+    assert_equal "$COLUMNS" "80" "COLUMNS should be set to 80 by setup_file"
 
     teardown_file # Should not attempt stty operations
 
-    assert_equal "$COLUMNS" "99"
-    assert_equal "$_bats_original_stty_cols" ""
-    assert_equal "$_bats_original_cols_env" ""
+    assert_equal "$COLUMNS" "$original_columns_value" "COLUMNS should be restored"
+    assert_equal "$_bats_saved_stty_cols" "" "_bats_saved_stty_cols should be unset"
+    assert_equal "$_bats_saved_columns_env" "" "_bats_saved_columns_env should be unset"
 
-    # No stubs were used for stty or test in this version of the test.
-    export COLUMNS="99" # Restore for safety
+    # Restore original environment
+    # Restore COLUMNS just in case, though teardown_file should handle it
+    if [ -n "${original_columns_value+x}" ]; then export COLUMNS="$original_columns_value"; else unset COLUMNS; fi
     unset _BATS_TEST_STDIN_IS_TTY _BATS_TEST_STDOUT_IS_TTY
 }
 
@@ -654,7 +629,7 @@ teardown() {
 }
 
 # --- Tests for _lib_msg_wrap_text (Direct Text Wrapping Logic) ---
-@test "_lib_msg_wrap_text: parameterized tests" {
+@test "_lib_msg_wrap_text: parameterized tests using assert_wrap_text_rs" {
     # Define test cases: "description;input_text;width;expected_line1;expected_line2;..."
     # Note: An empty expected line should be represented by an empty field (e.g., ...;expected_line1;;expected_line3;...)
     local wrap_text_test_cases=(
@@ -686,44 +661,27 @@ teardown() {
         local input_text="${params[1]}"
         local width="${params[2]}"
 
-        local expected_lines_array=()
+        # Build expected output string with newlines
+        local expected_output=""
         # Loop from index 3 to the end of params array for expected lines
         if [ "${#params[@]}" -gt 3 ]; then
             for (( i=3; i<${#params[@]}; i++ )); do
-                expected_lines_array+=("${params[i]}")
+                if [ -n "$expected_output" ]; then
+                    expected_output="${expected_output}
+${params[i]}"
+                else
+                    expected_output="${params[i]}"
+                fi
             done
-        elif [ "${#params[@]}" -eq 3 ]; then # Case like "description;input;width;" expecting one empty line
-            # If we have "description;input;width;", that trailing semicolon means there's an expected empty output
-            if [[ "$test_case_str" == *\; ]]; then
-                # Add a single empty line as expected output
-                expected_lines_array+=("")
-            else
-                # Otherwise, for "description;input;width", assume error in test case
-                echo "Warning: Test case without expected lines: $description" >&3
-                expected_lines_array+=("$input_text") # Default expectation to the input text itself
-            fi
+        elif [ "${#params[@]}" -eq 3 ] && [[ "$test_case_str" == *\; ]]; then
+            # Case like "description;input;width;" expecting one empty line
+            expected_output=""
         fi
 
-
-        # Run the function under test. It populates the global 'lines' array.
-        # The `run` command is not used here as we are testing a shell function directly
-        # and inspecting an array it populates, not its stdout.
-        _lib_msg_wrap_text "$input_text" "$width"
-        # `_lib_msg_wrap_text` sets the `lines` array globally.
-
-        # Make the test result more debuggable by printing values
-        echo "Test Case $test_idx ('$description'): Line count - Expected: ${#expected_lines_array[@]}, Got: ${#lines[@]}" >&3
-        if [ "${#lines[@]}" -ne "${#expected_lines_array[@]}" ]; then
-            for i in $(seq 0 $(( ${#lines[@]} - 1))); do
-                echo "  Actual Line $((i+1)): '${lines[$i]}'" >&3
-            done
-        fi
+        echo "Test Case $test_idx ('$description'): Testing _lib_msg_wrap_text with assert_wrap_text_rs" >&3
         
-        assert_equal "${#lines[@]}" "${#expected_lines_array[@]}" "Test Case $test_idx ('$description'): Number of lines mismatch. Expected ${#expected_lines_array[@]}, Got ${#lines[@]}"
-
-        for i in $(seq 0 $((${#expected_lines_array[@]} - 1))); do
-            assert_equal "${lines[$i]}" "${expected_lines_array[$i]}" "Test Case $test_idx ('$description'): Line $((i+1)) mismatch. Expected '${expected_lines_array[$i]}', Got '${lines[$i]}'"
-        done
+        # Use our new helper to test _lib_msg_wrap_text with its RS-delimited string output
+        assert_wrap_text_rs "$input_text" "$width" "$expected_output"
     done
 }
 

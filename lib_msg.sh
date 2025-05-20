@@ -2,7 +2,11 @@
 
 # --- Command Availability Detection ---
 _lib_msg_has_command() {
-    command -v "$1" >/dev/null 2>&1
+    # Use a more specific check that will work with BATS command stubbing
+    if ! command -v "$1" >/dev/null 2>&1; then
+        return 1
+    fi
+    return 0
 }
 
 # --- lib_msg TTY and Width Detection (Initialize Once) ---
@@ -102,14 +106,18 @@ _lib_msg_strip_ansi_shell() {
     while [ -n "$_remaining_input" ]; do
         case "$_remaining_input" in
             "$_LIB_MSG_ESC"*)
+                # Handle escape sequence
                 _after_esc="${_remaining_input#"$_LIB_MSG_ESC"}"
                 if [ "${_after_esc%"${_after_esc#?}"}" = "[" ]; then
+                    # This is potentially a CSI sequence
                     _sequence_part="${_after_esc#?}"
                     _params_and_cmd="$_sequence_part"
                     _cmd_char=""
                     _loop_idx=0
                     _max_loop_idx=${#_params_and_cmd}
+                    _found_valid_sequence=false
 
+                    # Scan for the command character
                     while [ "$_loop_idx" -lt "$_max_loop_idx" ]; do
                         _temp_str_for_char="$_params_and_cmd"
                         _char_idx_iter=0
@@ -121,8 +129,10 @@ _lib_msg_strip_ansi_shell() {
 
                         case "$_current_param_char" in
                             [0-9\;:])
+                                # Valid parameter character, keep scanning
                                 ;;
                             [a-zA-Z])
+                                # Found valid command character, this is a complete sequence
                                 _cmd_char="$_current_param_char"
                                 _temp_str_for_remainder="$_params_and_cmd"
                                 _remainder_idx_iter=0
@@ -132,22 +142,30 @@ _lib_msg_strip_ansi_shell() {
                                     _remainder_idx_iter=$((_remainder_idx_iter + 1))
                                 done
                                 _remaining_input="$_temp_str_for_remainder"
+                                _found_valid_sequence=true
                                 break
                                 ;;
                             *)
+                                # Invalid character for CSI, treat whole sequence as literal
                                 _cmd_char=""
-                                _remaining_input=""
                                 break
                                 ;;
                         esac
                         _loop_idx=$((_loop_idx + 1))
                     done
 
-                    if [ -z "$_cmd_char" ]; then
-                         _result_str="${_result_str}${_LIB_MSG_ESC}["
-                         _remaining_input="$_sequence_part"
+                    # If we found a valid sequence, skip it (strip it)
+                    if $_found_valid_sequence; then
+                        continue
                     fi
+
+                    # If we didn't find a command char, this is an incomplete sequence
+                    # We need to preserve it literally including ESC and [
+                    _result_str="${_result_str}${_LIB_MSG_ESC}["
+                    _remaining_input="$_sequence_part"
                 else
+                    # ESC followed by something other than [
+                    # Preserve it literally
                     _result_str="${_result_str}${_LIB_MSG_ESC}"
                     _remaining_input="$_after_esc"
                 fi
@@ -168,15 +186,14 @@ _lib_msg_strip_ansi_sed() {
 }
 
 # Select the best available implementation for stripping ANSI sequences
-if _lib_msg_has_command sed; then
-    _lib_msg_strip_ansi() {
+# Define as a function that checks availability each time to work properly with command stubbing
+_lib_msg_strip_ansi() {
+    if _lib_msg_has_command sed; then
         _lib_msg_strip_ansi_sed "$1"
-    }
-else
-    _lib_msg_strip_ansi() {
+    else
         _lib_msg_strip_ansi_shell "$1"
-    }
-fi
+    fi
+}
 
 # --- Text Wrapping Implementations ---
 
@@ -186,6 +203,11 @@ _lib_msg_wrap_text_sh() {
     _text_to_wrap="$1"
     _max_width="$2"
     _result_lines=""
+    
+    # Replace newlines with spaces to match AWK implementation behavior
+    # This is crucial to ensure similar handling of multi-line input across both implementations
+    # The tr command needs to be properly escaped to handle input with special characters
+    _text_to_wrap="$(printf "%s" "$_text_to_wrap" | tr '\n' ' ')"
     
     _temp_text_for_check="$_text_to_wrap"
     _old_ifs_check="$IFS"
@@ -241,7 +263,7 @@ _lib_msg_wrap_text_sh() {
                         _char_count_for_chunk=$((_char_count_for_chunk + 1))
                     done
                     
-                    # Add line to result
+                    # Add line to result with proper record separator
                     if [ -z "$_result_lines" ]; then
                         _result_lines="$_chunk"
                     else
@@ -285,7 +307,7 @@ _lib_msg_wrap_text_sh() {
                         _char_count_for_chunk=$((_char_count_for_chunk + 1))
                     done
                     
-                    # Add line to result
+                    # Add line to result with proper record separator
                     _result_lines="${_result_lines}${_LIB_MSG_RS}${_chunk}"
                     
                     _temp_long_word=${_temp_long_word#"$_chunk"}
@@ -337,7 +359,10 @@ _lib_msg_wrap_text_awk() {
         return
     fi
     
-    _result=$(printf '%s' "$_text_to_wrap" | awk -v max_width="$_max_width" -v rs="$(printf '\036')" '
+    # First convert newlines to spaces for consistent behavior with shell implementation
+    _text_to_wrap_nl_normalized=$(printf '%s' "$_text_to_wrap" | tr '\n' ' ')
+    
+    _result=$(printf '%s' "$_text_to_wrap_nl_normalized" | awk -v max_width="$_max_width" -v rs="$(printf '\036')" '
     BEGIN {
         result = "";
         current_line = "";
@@ -451,6 +476,7 @@ _lib_msg_wrap_text() {
     fi
     
     # Select the best implementation to get RS-delimited lines
+    # Check command availability each time for proper stubbing support in tests
     if _lib_msg_has_command awk; then
         _result=$(_lib_msg_wrap_text_awk "$_text_to_wrap" "$_max_width")
     else

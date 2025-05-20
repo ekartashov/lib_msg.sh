@@ -95,57 +95,35 @@ The library includes a test suite using [BATS (Bash Automated Testing System)](h
 
 The BATS helper libraries (`bats-assert`, `bats-support`, `bats-mock`) are included as Git submodules in the `test/libs/` directory. To update them to their latest tagged versions:
 
-1.  **Update all submodules to the latest commit on their tracked branch:**
-    ```sh
-    git submodule update --remote --merge
-    ```
+1. **Using the provided script:**
+   
+   The repository includes an update script that you can run from the project root:
 
-2.  **Checkout the latest tag for each helper:**
-    You can use the following script snippet to find and checkout the latest semantic version tag for each submodule. Run this from the project root:
+   ```sh
+   ./scripts/update_submodules.sh
+   ```
 
-    ```sh
-    #!/bin/sh
+   This script:
+   - Updates all submodules to the latest commit on their tracked branch
+   - For each submodule, checks out the latest semantic version tag
+   - Provides instructions for committing the changes
 
-    update_submodule_to_latest_tag() {
-        submodule_path="$1"
-        echo "Updating submodule: $submodule_path"
+2. **Manual update process (alternative):**
 
-        if [ ! -d "$submodule_path" ]; then
-            echo "Error: Submodule path $submodule_path does not exist."
-            return 1
-        fi
+   If you prefer to update manually:
+   
+   ```sh
+   # Update all submodules to the latest commit
+   git submodule update --remote --merge
+   
+   # For each submodule, navigate to its directory and checkout the latest tag
+   cd test/libs/bats-assert
+   git fetch --tags
+   git checkout $(git tag -l 'v*' | sort -V | tail -n 1)
+   # Repeat for other submodules
+   ```
 
-        (
-            cd "$submodule_path" || exit 1
-            # Fetch all tags from remote
-            git fetch --tags
-            # Get the latest semantic version tag (vX.Y.Z)
-            # This sorts tags that look like versions and picks the last one.
-            # It assumes tags are like v0.3.0, v1.2.5 etc.
-            latest_tag=$(git tag -l 'v*' | sort -V | tail -n 1)
-
-            if [ -z "$latest_tag" ]; then
-                echo "No version tags (v*) found for $submodule_path. Skipping tag checkout."
-                # Optionally, you might want to checkout a default branch here
-                # git checkout main # or master, or the default branch of the submodule
-            else
-                echo "Checking out latest tag: $latest_tag"
-                git checkout "$latest_tag"
-            fi
-        )
-        echo "------------------------------------"
-    }
-
-    update_submodule_to_latest_tag "test/libs/bats-assert"
-    update_submodule_to_latest_tag "test/libs/bats-support"
-    update_submodule_to_latest_tag "test/libs/bats-mock"
-
-    echo "Submodule update process complete. Review changes and commit the updated submodule references:"
-    echo "git add test/libs/bats-assert test/libs/bats-support test/libs/bats-mock"
-    echo "git commit -m \"Update BATS helper submodules to latest tags\""
-    ```
-
-    **Note:** This script assumes that the latest desired version is always the highest semantic version tag. Review the tags and release notes for each library if you need a specific version other than the latest.
+   **Note:** This assumes that the latest desired version is always the highest semantic version tag. Review the tags and release notes for each library if you need a specific version other than the latest.
 
 ## How It Works
 
@@ -175,3 +153,13 @@ The BATS helper libraries (`bats-assert`, `bats-support`, `bats-mock`) are inclu
 -   **Complex Scripts in Prefixes:** Prefixes are currently treated as plain text for length calculation. If prefixes contain ANSI codes, the library handles this correctly by stripping ANSI codes when calculating lengths.
 -   **`COLUMNS` Variable:** Relies on the `COLUMNS` environment variable being correctly set and updated for accurate terminal width. Some terminal emulators or environments might not update this reliably.
 -   **Word Splitting:** The wrapper splits words based on single spaces. Multiple consecutive spaces in the input text might lead to slightly different spacing in the wrapped output compared to the input, as empty "words" might be processed.
+
+## Performance Considerations
+
+For optimal performance:
+
+-   **Having `sed` and `awk` available:** While the library provides pure POSIX shell fallbacks for all functionality, the `sed` and `awk` implementations are significantly more efficient, especially for text wrapping and ANSI code stripping operations.
+-   **Memory Usage:** The pure shell fallbacks use more memory for string manipulation compared to the optimized implementations. This difference becomes more significant with large amounts of text.
+-   **Performance Difference:** On systems with limited resources or when processing large text blocks, the performance gap between optimized implementations and pure shell fallbacks can be substantial.
+
+The library automatically selects the best available implementation based on command availability, so having `sed` and `awk` installed ensures you get the best performance without any configuration changes.

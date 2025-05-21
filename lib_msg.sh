@@ -14,38 +14,60 @@ _LIB_MSG_STDOUT_IS_TTY="" # Unset initially
 _LIB_MSG_STDERR_IS_TTY="" # Unset initially
 _LIB_MSG_TERMINAL_WIDTH=0   # Default to 0 (no wrapping)
 
+# This function is no longer used
+_lib_msg_test_t() {
+    test -t "$1"
+}
+
+# We need BATS to be able to stub this function for testing
+# IMPORTANT: DO NOT CHANGE THE COMMAND FORMAT "test -t N"
+# It needs to be exactly this format for BATS test stubbing
 _lib_msg_init_detection() {
     # TTY detection - only run if not already set
     if [ -z "$_LIB_MSG_STDOUT_IS_TTY" ]; then
         # Allow overriding TTY detection via environment variables for testing
         if [ -n "$LIB_MSG_FORCE_STDOUT_TTY" ]; then
             _LIB_MSG_STDOUT_IS_TTY="$LIB_MSG_FORCE_STDOUT_TTY"
-        elif [ -t 1 ]; then
+        # IMPORTANT: Format must be exactly "test -t 1" for BATS stubbing to work
+        elif test -t 1; then
+            # Set to true if test -t 1 returns success (FD 1 is a TTY)
             _LIB_MSG_STDOUT_IS_TTY="true"
         else
+            # Set to false otherwise
             _LIB_MSG_STDOUT_IS_TTY="false"
         fi
 
         if [ -n "$LIB_MSG_FORCE_STDERR_TTY" ]; then
             _LIB_MSG_STDERR_IS_TTY="$LIB_MSG_FORCE_STDERR_TTY"
-        elif [ -t 2 ]; then
+        # IMPORTANT: Format must be exactly "test -t 2" for BATS stubbing to work
+        elif test -t 2; then
+            # Set to true if test -t 2 returns success (FD 2 is a TTY)
             _LIB_MSG_STDERR_IS_TTY="true"
         else
+            # Set to false otherwise
             _LIB_MSG_STDERR_IS_TTY="false"
         fi
     fi
 
+    # Always start with width 0, then evaluate conditions
     _LIB_MSG_TERMINAL_WIDTH=0
-    if [ "$_LIB_MSG_STDOUT_IS_TTY" = "true" ] || [ "$_LIB_MSG_STDERR_IS_TTY" = "true" ]; then
-        _temp_cols="${COLUMNS:-}"
-        case "$_temp_cols" in
-            ''|*[!0-9]*) _LIB_MSG_TERMINAL_WIDTH=0 ;;
-            0) _LIB_MSG_TERMINAL_WIDTH=0 ;;
-            0*) _LIB_MSG_TERMINAL_WIDTH=0 ;;
-            *[0-9]) _LIB_MSG_TERMINAL_WIDTH="$_temp_cols" ;;
-            *) _LIB_MSG_TERMINAL_WIDTH=0 ;;
-        esac
+
+    # Critical: If both stdout and stderr are not TTY, always use width 0
+    if [ "$_LIB_MSG_STDOUT_IS_TTY" = "false" ] && [ "$_LIB_MSG_STDERR_IS_TTY" = "false" ]; then
+        # Force to 0 for test compliance and correctness
+        _LIB_MSG_TERMINAL_WIDTH=0
+        return
     fi
+    
+    # One or both streams is a TTY, check COLUMNS
+    _temp_cols="${COLUMNS:-}"
+    case "$_temp_cols" in
+        ''|*[!0-9]*) _LIB_MSG_TERMINAL_WIDTH=0 ;;
+        0) _LIB_MSG_TERMINAL_WIDTH=0 ;;
+        0*) _LIB_MSG_TERMINAL_WIDTH=0 ;;
+        *[0-9]) _LIB_MSG_TERMINAL_WIDTH="$_temp_cols" ;;
+        *) _LIB_MSG_TERMINAL_WIDTH=0 ;;
+    esac
 }
 _lib_msg_init_detection
 
@@ -347,21 +369,21 @@ _lib_msg_wrap_text_sh() {
 _lib_msg_wrap_text_awk() {
     _text_to_wrap="$1"
     _max_width="$2"
-    
+
     if [ -z "$_text_to_wrap" ]; then # Handle empty string special case
         # Return empty string
         printf "%s" ""
         return
     fi
-    
+
     if [ "$_max_width" -le 0 ]; then # No wrapping if width is 0 or less
         printf "%s" "$_text_to_wrap"
         return
     fi
-    
+
     # First convert newlines to spaces for consistent behavior with shell implementation
     _text_to_wrap_nl_normalized=$(printf '%s' "$_text_to_wrap" | tr '\n' ' ')
-    
+
     _result=$(printf '%s' "$_text_to_wrap_nl_normalized" | awk -v max_width="$_max_width" -v rs="$(printf '\036')" '
     BEGIN {
         result = "";
@@ -369,7 +391,7 @@ _lib_msg_wrap_text_awk() {
         first_word = 1;
         line_count = 0;
     }
-    
+
     function add_line(line) {
         if (result == "")
             result = line;
@@ -377,7 +399,7 @@ _lib_msg_wrap_text_awk() {
             result = result rs line;
         line_count++;
     }
-    
+
     function process_long_word(word) {
         while (length(word) > max_width) {
             chunk = substr(word, 1, max_width);
@@ -386,21 +408,26 @@ _lib_msg_wrap_text_awk() {
         }
         return word;
     }
-    
+
     {
         if ($0 == "") {
             add_line("");
             next;
         }
-        
+
+        # Preserve exactly one space between words, but not leading/trailing spaces
+        gsub(/^[ \t]+/, "");    # Remove leading spaces
+        gsub(/[ \t]+$/, "");    # Remove trailing spaces
+        gsub(/[ \t]+/, " ");    # Normalize multiple spaces to single space
+
+        # Split by spaces for word processing
         split($0, words, " ");
-        
         for (i = 1; i <= length(words); i++) {
             word = words[i];
             word_len = length(word);
-            
+
             if (word_len == 0) continue;
-            
+
             if (first_word) {
                 if (word_len > max_width) {
                     remainder = process_long_word(word);
@@ -416,7 +443,7 @@ _lib_msg_wrap_text_awk() {
                 current_line = current_line " " word;
             } else {
                 add_line(current_line);
-                
+
                 if (word_len > max_width) {
                     remainder = process_long_word(word);
                     if (remainder != "") {
@@ -432,17 +459,17 @@ _lib_msg_wrap_text_awk() {
                 }
             }
         }
-        
+
         if (current_line != "" || !first_word) {
             add_line(current_line);
         }
     }
-    
+
     END {
         # Output the result directly
         printf("%s", result);
     }')
-    
+
     printf "%s" "$_result"
 }
 
@@ -626,7 +653,25 @@ die() {
             ;;
     esac
 
-    _prefix_tag=$(_lib_msg_colorize "E: " "$_LIB_MSG_CLR_RED" "$_LIB_MSG_STDERR_IS_TTY")
+    # Ensure we have colors initialized if stderr is forced to TTY
+    if [ -n "$LIB_MSG_FORCE_STDERR_TTY" ] && [ "$LIB_MSG_FORCE_STDERR_TTY" = "true" ]; then
+        _LIB_MSG_STDERR_IS_TTY="true"
+        # Make sure colors are initialized if not already
+        if [ -z "$_LIB_MSG_CLR_RED" ]; then
+            _lib_msg_init_colors
+        fi
+    fi
+
+    # Always generate these right at the point of use
+    _err_color_code="$_LIB_MSG_CLR_RED"
+    _reset_code="$_LIB_MSG_CLR_RESET"
+
+    if [ "$_LIB_MSG_STDERR_IS_TTY" = "true" ] && [ -n "$_err_color_code" ] && [ -n "$_reset_code" ]; then
+        _prefix_tag="${_err_color_code}E: ${_reset_code}"
+    else
+        _prefix_tag="E: "
+    fi
+
     _print_msg_core "$_actual_message" "${SCRIPT_NAME:-lib_msg.sh}: ${_prefix_tag}" "true" ""
 
     if _lib_msg_is_return_valid; then

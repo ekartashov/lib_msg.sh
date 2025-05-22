@@ -15,21 +15,11 @@
 
 1.  **Source the Library:**
     To use `lib_msg.sh` in your shell script, source it at the beginning:
+    
+    ![usage](docs/media/usage_code.svg "Usage")
 
-    ```sh
-    #!/bin/sh
+    ![usage_output](docs/media/usage_output.svg "Output")
 
-    # Adjust path to lib_msg.sh as necessary
-    # shellcheck source=./lib_msg.sh
-    . "./lib_msg.sh"
-
-    # Your script logic here
-    msg "Script started."
-    info "Here's some information."
-    warn "Something to be cautious about."
-    err "An error occurred (but not fatal)."
-    # die 1 "A fatal error occurred, exiting."
-    ```
 
 2.  **Set `SCRIPT_NAME` (Optional but Recommended):**
     The library uses the `SCRIPT_NAME` environment variable for message prefixes. If not set, it defaults to `lib_msg.sh`. It's good practice to set this in your main script:

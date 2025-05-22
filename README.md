@@ -86,10 +86,10 @@ The library includes a test suite using [BATS (Bash Automated Testing System)](h
     Navigate to the root directory of this project (where `lib_msg.sh` and the `test` directory are located) and run:
 
     ```sh
-    bats test/lib_msg.bats
+    bats test/
     ```
 
-    This will execute all tests defined in [`test/lib_msg.bats`](test/lib_msg.bats:0).
+    This will execute all tests defined in the `test/` directory, covering all aspects of the library.
 
 ### Updating BATS Helper Submodules
 
@@ -133,7 +133,8 @@ The BATS helper libraries (`bats-assert`, `bats-support`, `bats-mock`) are inclu
 -   **Wrapping Logic (`_lib_msg_wrap_text`):**
     -   If wrapping is enabled and necessary, text is split into words.
     -   Words are appended to the current line if they fit within the calculated maximum content width (terminal width minus prefix length).
-    -   If a word doesn't fit, the current line is printed, and the word starts a new line.
+    -   If a word doesn't fit, the current line is finalized, and the word starts a new line.
+    -   Internally, lines are delimited using a Record Separator (`_LIB_MSG_RS`) for POSIX compliance, avoiding shell arrays.
     -   Very long words that exceed the maximum content width by themselves are forcibly broken into chunks.
 -   **Core Printing Logic (`_print_msg_core`):**
     -   This internal function handles all message printing.
@@ -149,7 +150,7 @@ The BATS helper libraries (`bats-assert`, `bats-support`, `bats-mock`) are inclu
 
 ## Limitations and Known Issues
 
--   **ANSI in Wrapped Text:** The current text wrapping logic in `_lib_msg_wrap_text` is not fully ANSI-aware. If a message is colored *before* wrapping, the ANSI escape codes contribute to the string length seen by the wrapper. This can lead to lines being wrapped slightly shorter than expected visually. To mitigate this, the library handles ANSI stripping for length calculations using `_lib_msg_strip_ansi_shell`.
+-   **ANSI in Wrapped Text:** The current text wrapping logic in `_lib_msg_wrap_text` is not fully ANSI-aware. If a message is colored *before* wrapping, the ANSI escape codes contribute to the string length seen by the wrapper. This can lead to lines being wrapped slightly shorter than expected visually. To mitigate this, the library handles ANSI stripping for length calculations using `_lib_msg_strip_ansi` (which intelligently chooses between `sed` and a shell fallback).
 -   **Complex Scripts in Prefixes:** Prefixes are currently treated as plain text for length calculation. If prefixes contain ANSI codes, the library handles this correctly by stripping ANSI codes when calculating lengths.
 -   **`COLUMNS` Variable:** Relies on the `COLUMNS` environment variable being correctly set and updated for accurate terminal width. Some terminal emulators or environments might not update this reliably.
 -   **Word Splitting:** The wrapper splits words based on single spaces. Multiple consecutive spaces in the input text might lead to slightly different spacing in the wrapped output compared to the input, as empty "words" might be processed.

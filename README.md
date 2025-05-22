@@ -182,4 +182,4 @@ The library automatically selects the best available implementation based on com
 ## License
 
 This project is licensed under the GNU General Public License v3.0.
-The full license text will be available in the `LICENSE.md` file (to be added by you) in the root of this project.
+The full license text is available in [`LICENSE.md`](LICENSE.md).

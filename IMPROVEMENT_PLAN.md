@@ -16,9 +16,9 @@
 
 *   **A. Test Suite Robustness & Complexity:**
     *   **Issue 1 (File-Level Setup/Teardown):** The `setup_file` / `teardown_file` logic in `test/lib_msg.bats` for `stty` and `COLUMNS` management is complex, relying on environment variables passed from individual tests to control its TTY-dependent behavior. This can lead to brittleness.
-    *   **Issue 2 (Global `lines` Array for Test Compatibility):** The library uses a global `lines` variable, populated as an RS-delimited string internally but converted to a bash array in `_lib_msg_wrap_text()` solely for BATS test compatibility. This is a workaround.
-    *   **Proposed Solution (A1):** Simplify `setup_file` by having it assume a fixed, non-TTY (or minimally TTY-dependent) state for its own `stty` operations. Individual tests should then use `simulate_tty_conditions` to establish their specific TTY states *after* `setup_file` and *before* calling library functions.
-    *   **Proposed Solution (A2):** Refactor BATS tests (especially parameterized tests for `_lib_msg_wrap_text`) to assert against the `_LIB_MSG_RS`-delimited string output directly. This removes the need for the bash array conversion layer in `_lib_msg_wrap_text`, simplifying the library. A BATS helper function could be created to compare an RS-delimited string against an expected set of lines if direct assertion is too complex.
+    *   **Issue 2 (Global `lines` Array for Test Compatibility):** [DONE] Previously, the library converted its internal RS-delimited string to a bash array in `_lib_msg_wrap_text()` for BATS test compatibility. This workaround has been removed.
+    *   **Proposed Solution (A1):** [DONE] `setup_file` has been simplified. Individual tests now use `simulate_tty_conditions` to establish their specific TTY states.
+    *   **Proposed Solution (A2):** [DONE] BATS tests for `_lib_msg_wrap_text` now assert against the `_LIB_MSG_RS`-delimited string output directly, and the array conversion layer in `_lib_msg_wrap_text` has been removed.
 
 *   **B. Complexity of Shell-Based Fallbacks:**
     *   **Issue:** Pure shell fallbacks (`_lib_msg_strip_ansi_shell()`, `_lib_msg_wrap_text_sh()`) are inherently complex and harder to maintain than `sed`/`awk` versions. The `fold` utility is not a suitable alternative due to the requirement for prefix-aware indentation on wrapped lines, which `fold` does not natively support.
@@ -38,14 +38,14 @@
 
 ## 3. Proposed Action Plan (Prioritized)
 
-1.  **High Priority: Enhance Test Suite Robustness & Maintainability**
-    *   **Task 1.1:** Refactor BATS assertions for `_lib_msg_wrap_text` to work directly with `_LIB_MSG_RS`-delimited strings.
-    *   **Task 1.2:** Simplify `_lib_msg_wrap_text()` by removing the bash array conversion logic once Task 1.1 is complete.
-    *   **Task 1.3:** Refactor `setup_file`/`teardown_file` in `test/lib_msg.bats` to decouple its `stty` operations from individual test TTY states.
+1.  **High Priority: Enhance Test Suite Robustness & Maintainability (COMPLETED)**
+    *   **Task 1.1:** [DONE] Refactor BATS assertions for `_lib_msg_wrap_text` to work directly with `_LIB_MSG_RS`-delimited strings.
+    *   **Task 1.2:** [DONE] Simplify `_lib_msg_wrap_text()` by removing the bash array conversion logic.
+    *   **Task 1.3:** [DONE] Refactor `setup_file`/`teardown_file` in `test/lib_msg.bats` to decouple its `stty` operations from individual test TTY states.
 
 2.  **Medium Priority: Improve Developer Experience & Documentation**
-    *   **Task 2.1:** Create `scripts/update_submodules.sh` from the README snippet.
-    *   **Task 2.2:** Update `README.md` to refer to the new script and re-emphasize the performance benefits of having `sed` and `awk`.
+    *   **Task 2.1:** [DONE] Create `scripts/update_submodules.sh` from the README snippet.
+    *   **Task 2.2:** [DONE] Update `README.md` to refer to the new script and re-emphasize the performance benefits of having `sed` and `awk`.
 
 3.  **Low Priority: Ongoing Maintenance**
     *   **Task 3.1:** Periodically review the pure shell fallback functions (`_lib_msg_strip_ansi_shell()`, `_lib_msg_wrap_text_sh()`) for correctness.

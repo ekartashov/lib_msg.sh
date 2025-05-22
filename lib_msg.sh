@@ -474,9 +474,9 @@ _lib_msg_wrap_text_awk() {
     printf "%s" "$_result"
 }
 
-# This wrapper converts our new RS-delimited string back to arrays for tests
-# Note: Since BATS tests actually run in bash, we can use a real bash array for test compatibility
-# while still keeping the implementations POSIX sh compatible
+# This function selects the best available text wrapping implementation (_awk or _sh)
+# and returns the result as an RS-delimited string.
+# The underlying implementations are POSIX sh compatible.
 _lib_msg_wrap_text() {
     _text_to_wrap="$1"
     _max_width="$2"

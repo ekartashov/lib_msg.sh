@@ -1,0 +1,5 @@
+lib_msg.sh: Script started.
+lib_msg.sh: [0;34mI: [0mHere's some information.
+lib_msg.sh: [0;33mW: [0mSomething to be cautious about.
+lib_msg.sh: [0;31mE: [0mAn error occurred (but not fatal).
+lib_msg.sh: [0;31mE: [0mA fatal error occurred, exiting.

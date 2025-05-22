@@ -109,7 +109,8 @@ _lib_msg_init_colors() {
 }
 _lib_msg_init_colors
 
-_LIB_MSG_NL=$(printf '\n')
+_LIB_MSG_NL='
+'
 _LIB_MSG_ESC=$(printf '\033')
 _LIB_MSG_RS=$(printf '\036') # Record Separator (unlikely to appear in normal text)
 # --- End lib_msg TTY and Width Detection ---
@@ -539,6 +540,8 @@ _print_msg_core() {
 
     _stripped_prefix_for_len=$(_lib_msg_strip_ansi "$_prefix_str")
     _visible_prefix_len=${#_stripped_prefix_for_len}
+    _processed_output=""
+
     _processed_output=""
 
     if [ "$_is_tty" = "true" ] && [ "$_LIB_MSG_TERMINAL_WIDTH" -gt 0 ]; then

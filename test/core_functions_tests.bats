@@ -393,3 +393,41 @@ EOF
     # It should contain our echo of the exit status showing die returned but didn't exit
     assert_output --partial "Exit status from die: 123"
 }
+
+# --- msg() and msgn() Tests ---
+
+@test "msg(): correctly wraps and indents multi-line messages" {
+    # Simulate TTY for wrapping and COLUMNS for width
+    simulate_tty_conditions 0 1 # stdout is TTY, stderr is not
+    local orig_columns="$COLUMNS"
+    export COLUMNS=30 # Narrow width to force wrapping
+    _lib_msg_force_reinit
+
+    local script_name_backup="$SCRIPT_NAME"
+    export SCRIPT_NAME="test_msg.sh" # Predictable prefix
+
+    # Message designed to wrap
+    # Prefix "test_msg.sh: " is 13 chars.
+    # Available width for text: 30 - 13 = 17 chars.
+    # "This is a long test message."
+    # Line 1 content: "This is a long " (15 chars)
+    # Line 2 content: "test message."   (13 chars)
+    local input_message="This is a long test message."
+    
+    # Expected output
+    # Note: Need to be careful with spaces in the expected string for BATS
+    # _LIB_MSG_NL is now a literal newline.
+    local expected_output
+expected_output="test_msg.sh: This is a long" # Line 1 with prefix
+expected_output="${expected_output}${_LIB_MSG_NL}" # Newline
+expected_output="${expected_output}             test message." # Line 2 indented (13 spaces)
+
+    run msg "$input_message"
+    assert_success
+    assert_output "$expected_output"
+
+    # Restore original environment
+    export SCRIPT_NAME="$script_name_backup"
+    export COLUMNS="$orig_columns"
+    _lib_msg_force_reinit
+}

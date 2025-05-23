@@ -171,20 +171,9 @@ _lib_msg_test_save_terminal_settings() {
     command -v stty >/dev/null
     stty_exists_code=$?
     
-    # Use environment variables for TTY checks, controlled by the test
-    local stdin_is_tty="false"
-    local stdout_is_tty="false"
-    
-    if [ "$_BATS_TEST_STDIN_IS_TTY" = "true" ]; then
-        stdin_is_tty="true"
-    fi
-    
-    if [ "$_BATS_TEST_STDOUT_IS_TTY" = "true" ]; then
-        stdout_is_tty="true"
-    fi
-    
-    # Only get stty settings if available and relevant TTYs are detected
-    if [ "$stty_exists_code" -eq 0 ] && [ "$stdin_is_tty" = "true" ] && [ "$stdout_is_tty" = "true" ]; then
+    # Try to get the current stty size regardless of TTY state
+    # This is important to capture the actual terminal width at the start
+    if [ "$stty_exists_code" -eq 0 ]; then
         # Check if we have a mock value defined
         if [ -n "${LIB_MSG_TEST_STTY_SIZE_OUTPUT+x}" ]; then
             # Note the +x syntax tests if the variable is set, not if it's non-empty
@@ -253,24 +242,21 @@ _lib_msg_test_restore_terminal_settings() {
     command -v stty >/dev/null
     stty_exists_code=$?
     
-    # Use environment variables for TTY checks
-    local stdin_is_tty="false"
-    local stdout_is_tty="false"
-    
-    if [ "$_BATS_TEST_STDIN_IS_TTY" = "true" ]; then
-        stdin_is_tty="true"
+    # Check if the test is simulating stty being unavailable via mock
+    if [ "${LIB_MSG_TEST_STTY_UNAVAILABLE:-}" = "true" ]; then
+        # Skip stty-related operations
+        echo "Note: stty unavailable by test configuration, skipping terminal width restoration" >&3
+    # Restore stty columns if we have a saved value and stty is available
+    elif [ -n "$_bats_saved_stty_cols" ] && [ "$stty_exists_code" -eq 0 ]; then
+        # IMPORTANT: Try to restore the original terminal width
+        # Use 2>/dev/null to suppress expected errors in non-TTY environments
+        echo "Restoring terminal width to $_bats_saved_stty_cols columns" >&3
+        stty cols "$_bats_saved_stty_cols" 2>/dev/null || true
+    elif [ -z "$_bats_saved_stty_cols" ]; then
+        echo "Note: No stty columns saved (expected in some test cases), skipping width restoration" >&3
     fi
     
-    if [ "$_BATS_TEST_STDOUT_IS_TTY" = "true" ]; then
-        stdout_is_tty="true"
-    fi
-    
-    # Restore stty columns if possible
-    if [ -n "$_bats_saved_stty_cols" ] && [ "$stty_exists_code" -eq 0 ] && [ "$stdin_is_tty" = "true" ] && [ "$stdout_is_tty" = "true" ]; then
-        stty cols "$_bats_saved_stty_cols" 2>/dev/null
-    fi
-    
-    # Restore original COLUMNS env var
+    # Always restore original COLUMNS env var regardless of TTY state
     if [ -n "${_bats_saved_columns_env+x}" ]; then # Check if original was set
         export COLUMNS="$_bats_saved_columns_env"
     else

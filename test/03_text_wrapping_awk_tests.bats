@@ -9,7 +9,7 @@ load "libs/bats-assert/load"
 load "libs/bats-mock/stub.bash"
 
 # Load our test helpers
-load "helpers/lib_msg_test_helpers.bash"
+load "test_helpers.bash"
 
 # Load the library to be tested
 # shellcheck source=../lib_msg.sh
@@ -210,53 +210,5 @@ Line three"
     done
 }
 
-@test "_lib_msg_wrap_text(): forcing awk implementation through setting command availability" {
-    # Save original functions
-    local orig_has_command
-    local orig_awk_impl
-    local orig_shell_impl
-    orig_has_command=$(declare -f _lib_msg_has_command)
-    orig_awk_impl=$(declare -f _lib_msg_wrap_text_awk)
-    orig_shell_impl=$(declare -f _lib_msg_wrap_text_sh)
-    
-    # Create temporary file to track function calls
-    local tracking_file="${BATS_TEST_TMPDIR}/function_called.txt"
-    echo "none" > "$tracking_file"
-    
-    # Replace the has_command function to force awk to be detected
-    _lib_msg_has_command() {
-        if [ "$1" = "awk" ]; then
-            return 0  # awk is available
-        fi
-        # For other commands, return false by default to avoid other issues
-        return 1
-    }
-    
-    # Override implementations to track calls using file
-    _lib_msg_wrap_text_awk() {
-        echo "awk" > "$tracking_file"
-        echo "Dummy awk implementation called"
-    }
-    
-    _lib_msg_wrap_text_sh() {
-        echo "shell" > "$tracking_file"
-        echo "Dummy shell implementation called"
-    }
-    
-    # Call _lib_msg_wrap_text and check which implementation was used
-    _lib_msg_wrap_text "Test text" 10 >/dev/null
-    
-    # Read tracking file to see which was called
-    local called
-    called=$(cat "$tracking_file")
-    
-    # Assert awk implementation was used
-    [ "$called" = "awk" ] || fail "awk implementation was not called, got: $called"
-    
-    # Restore original functions
-    eval "$orig_has_command"
-    eval "$orig_awk_impl"
-    eval "$orig_shell_impl"
-    
-    rm -f "$tracking_file"
-}
+# Note: Test "_lib_msg_wrap_text(): forcing awk implementation through setting command availability"
+# has been moved to 05_text_wrapping_dispatcher_tests.bats and renamed.

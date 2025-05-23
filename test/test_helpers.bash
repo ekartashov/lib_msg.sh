@@ -5,8 +5,8 @@
 # Resets lib_msg.sh internal TTY state variables and re-runs detection and color initialization.
 # This should be called after TTY conditions have been mocked (e.g., via simulate_tty_conditions).
 _lib_msg_force_reinit() {
-    _LIB_MSG_STDOUT_IS_TTY=""
-    _LIB_MSG_STDERR_IS_TTY=""
+    unset _LIB_MSG_STDOUT_IS_TTY
+    unset _LIB_MSG_STDERR_IS_TTY
     # COLUMNS should be set appropriately by the calling test if a specific width is needed.
     _lib_msg_init_detection
     _lib_msg_init_colors
@@ -24,7 +24,7 @@ simulate_tty_conditions() {
     local stdout_tty_exit_code="$1"
     local stderr_tty_exit_code="$2"
 
-    # Convert exit codes to true/false strings
+    # Set environment variables to "true" for TTY and "false" for non-TTY
     if [ "$stdout_tty_exit_code" -eq 0 ]; then
         export LIB_MSG_FORCE_STDOUT_TTY="true"
     else

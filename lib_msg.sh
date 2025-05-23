@@ -504,8 +504,15 @@ _lib_msg_wrap_text() {
     fi
     
     # Select the best implementation to get RS-delimited lines
-    # Check command availability each time for proper stubbing support in tests
-    if _lib_msg_has_command awk; then
+    # First check if implementation is forced via environment variable
+    if [ -n "$_LIB_MSG_FORCE_TEXT_WRAP_IMPL" ]; then
+        if [ "$_LIB_MSG_FORCE_TEXT_WRAP_IMPL" = "sh" ]; then
+            _result=$(_lib_msg_wrap_text_sh "$_text_to_wrap" "$_max_width")
+        else
+            _result=$(_lib_msg_wrap_text_awk "$_text_to_wrap" "$_max_width")
+        fi
+    # Otherwise check command availability each time for proper stubbing support in tests
+    elif _lib_msg_has_command awk; then
         _result=$(_lib_msg_wrap_text_awk "$_text_to_wrap" "$_max_width")
     else
         _result=$(_lib_msg_wrap_text_sh "$_text_to_wrap" "$_max_width")
@@ -657,7 +664,8 @@ die() {
     esac
 
     # Ensure we have colors initialized if stderr is forced to TTY
-    if [ -n "$LIB_MSG_FORCE_STDERR_TTY" ] && [ "$LIB_MSG_FORCE_STDERR_TTY" = "true" ]; then
+    # Check for both string "true" and numeric "0" for backward compatibility with tests
+    if [ -n "$LIB_MSG_FORCE_STDERR_TTY" ] && { [ "$LIB_MSG_FORCE_STDERR_TTY" = "true" ] || [ "$LIB_MSG_FORCE_STDERR_TTY" = "0" ]; }; then
         _LIB_MSG_STDERR_IS_TTY="true"
         # Make sure colors are initialized if not already
         if [ -z "$_LIB_MSG_CLR_RED" ]; then

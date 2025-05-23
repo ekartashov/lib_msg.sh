@@ -161,6 +161,7 @@ Additional documents for developers, including future plans and improvement idea
 
 -   [Improvement Plan](./docs/IMPROVEMENT_PLAN.md): Detailed analysis of weak points and a proposed action plan.
 -   [TODO List](./docs/TODO.md): A list of pending tasks and potential enhancements.
+-   [Shell Functions Review](./docs/SHELL_FUNCTIONS_REVIEW.md): Review of shell functions.
 
 ## Limitations and Known Issues
 

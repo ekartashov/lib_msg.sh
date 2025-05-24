@@ -10,6 +10,7 @@
 -   Text wrapping based on terminal width (via `COLUMNS` environment variable) if outputting to a TTY.
 -   ANSI color support for messages if outputting to a TTY.
 -   `die` function to print an error message and exit with a specified code (or return if sourced).
+-   Dynamic terminal width detection (checks width before each message display).
 
 ## Usage
 
@@ -65,7 +66,7 @@
 
 ## Testing
 
-The library includes a test suite using [BATS (Bash Automated Testing System)](https://github.com/bats-core/bats-core).
+The library includes a comprehensive test suite using [BATS (Bash Automated Testing System)](https://github.com/bats-core/bats-core).
 
 1.  **Install BATS:**
     If you don't have BATS installed, you can install it using your system's package manager.
@@ -97,6 +98,12 @@ The library includes a test suite using [BATS (Bash Automated Testing System)](h
     ```
 
     This will execute all tests defined in the `./test/` directory, covering all aspects of the library.
+    
+    For parallel testing (which can significantly speed up test execution), you can use:
+    
+    ```sh
+    bats -T test/ -j $(nproc --ignore 2)
+    ```
 
 ### Updating BATS Helper Submodules
 
@@ -135,7 +142,7 @@ The BATS helper libraries (`bats-assert`, `bats-support`, `bats-mock`) are inclu
 ## How It Works
 
 -   **TTY Detection:** On initialization (`_lib_msg_init_detection`), the library checks if stdout (file descriptor 1) and stderr (file descriptor 2) are connected to a terminal using `[ -t 1 ]` and `[ -t 2 ]`. This can be overridden with the environment variables `LIB_MSG_FORCE_STDOUT_TTY` and `LIB_MSG_FORCE_STDERR_TTY` (useful for testing).
--   **Terminal Width:** If a TTY is detected, it attempts to get the terminal width from the `COLUMNS` environment variable. If `COLUMNS` is not set or invalid, wrapping is disabled.
+-   **Terminal Width:** If a TTY is detected, it attempts to get the terminal width from the `COLUMNS` environment variable. If `COLUMNS` is not set or invalid, wrapping is disabled. The terminal width is checked dynamically before each message display.
 -   **Color Initialization:** If a TTY is detected, ANSI escape codes for various colors and styles are initialized (`_lib_msg_init_colors`). Otherwise, color variables remain empty, effectively disabling colored output.
 -   **Wrapping Logic (`_lib_msg_wrap_text`):**
     -   If wrapping is enabled and necessary, text is split into words.
@@ -161,7 +168,7 @@ Additional documents for developers, including future plans and improvement idea
 
 -   [Improvement Plan](./docs/IMPROVEMENT_PLAN.md): Detailed analysis of weak points and a proposed action plan.
 -   [TODO List](./docs/TODO.md): A list of pending tasks and potential enhancements.
--   [Shell Functions Review](./docs/SHELL_FUNCTIONS_REVIEW.md): Review of shell functions.
+-   [Shell Functions Review](./docs/SHELL_FUNCTIONS_REVIEW.md): Review of pure shell fallback functions.
 
 ## Limitations and Known Issues
 

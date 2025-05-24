@@ -9,7 +9,7 @@ _lib_msg_has_command() {
     return 0
 }
 
-# --- lib_msg TTY and Width Detection (Initialize Once) ---
+# --- lib_msg TTY and Width Detection ---
 _LIB_MSG_STDOUT_IS_TTY="" # Unset initially
 _LIB_MSG_STDERR_IS_TTY="" # Unset initially
 _LIB_MSG_TERMINAL_WIDTH=0   # Default to 0 (no wrapping)
@@ -49,6 +49,13 @@ _lib_msg_init_detection() {
         fi
     fi
 
+    # Initialize terminal width (done here for historical reasons)
+    _lib_msg_update_terminal_width
+}
+
+# Updates terminal width by checking COLUMNS env var
+# Called before each public API function to ensure we have the current width
+_lib_msg_update_terminal_width() {
     # Always start with width 0, then evaluate conditions
     _LIB_MSG_TERMINAL_WIDTH=0
 
@@ -69,6 +76,8 @@ _lib_msg_init_detection() {
         *) _LIB_MSG_TERMINAL_WIDTH=0 ;;
     esac
 }
+
+# Initialize TTY detection only once at library load time
 _lib_msg_init_detection
 
 # --- ANSI Color Codes (Initialize Once) ---
@@ -540,6 +549,9 @@ _print_msg_core() {
     _is_stderr="$3"
     _no_final_newline="$4"
 
+    # Update terminal width before formatting output
+    _lib_msg_update_terminal_width
+
     _is_tty=$_LIB_MSG_STDOUT_IS_TTY
     if [ "$_is_stderr" = "true" ]; then
         _is_tty=$_LIB_MSG_STDERR_IS_TTY
@@ -547,8 +559,6 @@ _print_msg_core() {
 
     _stripped_prefix_for_len=$(_lib_msg_strip_ansi "$_prefix_str")
     _visible_prefix_len=${#_stripped_prefix_for_len}
-    _processed_output=""
-
     _processed_output=""
 
     if [ "$_is_tty" = "true" ] && [ "$_LIB_MSG_TERMINAL_WIDTH" -gt 0 ]; then

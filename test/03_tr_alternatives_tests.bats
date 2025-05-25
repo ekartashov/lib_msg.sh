@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Tests for tr command alternatives in lib_msg.sh
+# Tests for text transformation functions in lib_msg.sh
 
 # Load BATS support and assertion libraries
 load "libs/bats-support/load"
@@ -25,156 +25,80 @@ teardown() {
     unset LIB_MSG_FORCE_STDOUT_TTY LIB_MSG_FORCE_STDERR_TTY
 }
 
-# --- Tests for _lib_msg_tr_newline_to_space_shell() ---
+# --- Tests for _lib_msg_tr_newline_to_space() ---
 
-@test "_lib_msg_tr_newline_to_space_shell(): converts newlines to spaces" {
+@test "_lib_msg_tr_newline_to_space(): converts newlines to spaces" {
     input="Line1
 Line2
 Line3"
     expected="Line1 Line2 Line3"
-    result=$(_lib_msg_tr_newline_to_space_shell "$input")
+    result=$(_lib_msg_tr_newline_to_space "$input")
     assert_equal "$result" "$expected"
 }
 
-@test "_lib_msg_tr_newline_to_space_shell(): handles empty input" {
-    result=$(_lib_msg_tr_newline_to_space_shell "")
+@test "_lib_msg_tr_newline_to_space(): handles empty input" {
+    result=$(_lib_msg_tr_newline_to_space "")
     assert_equal "$result" ""
 }
 
-@test "_lib_msg_tr_newline_to_space_shell(): handles input with only newlines" {
+@test "_lib_msg_tr_newline_to_space(): handles input with only newlines" {
     input="
 
 "
     expected="  "
-    result=$(_lib_msg_tr_newline_to_space_shell "$input")
+    result=$(_lib_msg_tr_newline_to_space "$input")
     assert_equal "$result" "$expected"
 }
 
-@test "_lib_msg_tr_newline_to_space_shell(): handles mixed content with special characters" {
+@test "_lib_msg_tr_newline_to_space(): handles mixed content with special characters" {
     input="Line1 with *special* chars!
 Line2 with \"quotes\" and $variables
 Line3 with \\escapes\\"
     expected="Line1 with *special* chars! Line2 with \"quotes\" and $variables Line3 with \\escapes\\"
-    result=$(_lib_msg_tr_newline_to_space_shell "$input")
+    result=$(_lib_msg_tr_newline_to_space "$input")
     assert_equal "$result" "$expected"
 }
 
-# --- Tests for _lib_msg_tr_remove_whitespace_shell() ---
-
-@test "_lib_msg_tr_remove_whitespace_shell(): removes all whitespace" {
-    input="  This has spaces tabs	and
-newlines  "
-    expected="Thishasspacestabsandnewlines"
-    result=$(_lib_msg_tr_remove_whitespace_shell "$input")
-    assert_equal "$result" "$expected"
-}
-
-@test "_lib_msg_tr_remove_whitespace_shell(): handles empty input" {
-    result=$(_lib_msg_tr_remove_whitespace_shell "")
-    assert_equal "$result" ""
-}
-
-@test "_lib_msg_tr_remove_whitespace_shell(): handles input with only whitespace" {
-    input="  	
- "
-    expected=""
-    result=$(_lib_msg_tr_remove_whitespace_shell "$input")
-    assert_equal "$result" "$expected"
-}
-
-@test "_lib_msg_tr_remove_whitespace_shell(): handles input with special characters" {
-    input="  Special *chars* and \"quotes\" with \$variables and \\escapes\\  "
-    expected="Special*chars*and\"quotes\"with\$variablesand\\escapes\\"
-    result=$(_lib_msg_tr_remove_whitespace_shell "$input")
-    assert_equal "$result" "$expected"
-}
-
-# --- Tests for _lib_msg_tr_newline_to_space() ---
-
-@test "_lib_msg_tr_newline_to_space(): uses tr when available" {
-    # Create stub for tr command that adds a marker to verify it was called
-    function tr() {
-        echo "TR_CALLED:$*"
-    }
-    export -f tr
-
-    # Mock _lib_msg_has_command to return true for tr
-    function _lib_msg_has_command() {
-        if [ "$1" = "tr" ]; then
-            return 0
-        fi
-        return 1
-    }
-    export -f _lib_msg_has_command
-
-    # Verify tr is called
-    result=$(_lib_msg_tr_newline_to_space "test")
-    assert_equal "$result" "TR_CALLED:\\n  "
-}
-
-@test "_lib_msg_tr_newline_to_space(): falls back to shell implementation when tr unavailable" {
-    # Mock _lib_msg_has_command to return false for tr
-    function _lib_msg_has_command() {
-        if [ "$1" = "tr" ]; then
-            return 1
-        fi
-        return 0
-    }
-    export -f _lib_msg_has_command
-
-    # Create test function that will verify the shell implementation is called
-    function _lib_msg_tr_newline_to_space_shell() {
-        echo "SHELL_IMPL_CALLED:$*"
-    }
-    export -f _lib_msg_tr_newline_to_space_shell
-
-    # Verify shell implementation is called
-    result=$(_lib_msg_tr_newline_to_space "test")
-    assert_equal "$result" "SHELL_IMPL_CALLED:test"
+@test "_lib_msg_tr_newline_to_space(): handles fast path with no newlines" {
+    input="Line with no newlines"
+    result=$(_lib_msg_tr_newline_to_space "$input")
+    assert_equal "$result" "$input"
 }
 
 # --- Tests for _lib_msg_tr_remove_whitespace() ---
 
-@test "_lib_msg_tr_remove_whitespace(): uses tr when available" {
-    # Create stub for tr command that adds a marker to verify it was called
-    function tr() {
-        echo "TR_CALLED:$*"
-    }
-    export -f tr
-
-    # Mock _lib_msg_has_command to return true for tr
-    function _lib_msg_has_command() {
-        if [ "$1" = "tr" ]; then
-            return 0
-        fi
-        return 1
-    }
-    export -f _lib_msg_has_command
-
-    # Verify tr is called
-    result=$(_lib_msg_tr_remove_whitespace "test")
-    assert_equal "$result" "TR_CALLED:-d [:space:]"
+@test "_lib_msg_tr_remove_whitespace(): removes all whitespace" {
+    input="  This has spaces tabs	and
+newlines  "
+    expected="Thishasspacestabsandnewlines"
+    result=$(_lib_msg_tr_remove_whitespace "$input")
+    assert_equal "$result" "$expected"
 }
 
-@test "_lib_msg_tr_remove_whitespace(): falls back to shell implementation when tr unavailable" {
-    # Mock _lib_msg_has_command to return false for tr
-    function _lib_msg_has_command() {
-        if [ "$1" = "tr" ]; then
-            return 1
-        fi
-        return 0
-    }
-    export -f _lib_msg_has_command
+@test "_lib_msg_tr_remove_whitespace(): handles empty input" {
+    result=$(_lib_msg_tr_remove_whitespace "")
+    assert_equal "$result" ""
+}
 
-    # Create test function that will verify the shell implementation is called
-    function _lib_msg_tr_remove_whitespace_shell() {
-        echo "SHELL_IMPL_CALLED:$*"
-    }
-    export -f _lib_msg_tr_remove_whitespace_shell
+@test "_lib_msg_tr_remove_whitespace(): handles input with only whitespace" {
+    input="  	
+ "
+    expected=""
+    result=$(_lib_msg_tr_remove_whitespace "$input")
+    assert_equal "$result" "$expected"
+}
 
-    # Verify shell implementation is called
-    result=$(_lib_msg_tr_remove_whitespace "test")
-    assert_equal "$result" "SHELL_IMPL_CALLED:test"
+@test "_lib_msg_tr_remove_whitespace(): handles input with special characters" {
+    input="  Special *chars* and \"quotes\" with \$variables and \\escapes\\  "
+    expected="Special*chars*and\"quotes\"with\$variablesand\\escapes\\"
+    result=$(_lib_msg_tr_remove_whitespace "$input")
+    assert_equal "$result" "$expected"
+}
+
+@test "_lib_msg_tr_remove_whitespace(): handles fast path with no whitespace" {
+    input="NoWhitespaceHere"
+    result=$(_lib_msg_tr_remove_whitespace "$input")
+    assert_equal "$result" "$input"
 }
 
 # --- Integration tests ---

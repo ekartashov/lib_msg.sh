@@ -1,8 +1,7 @@
 # TODO
 
-- [ ] Add performance tests
-- [ ] Add possibility of detecting colors and wrapping for other scripts
-- [ ] May be add log levels functionality
+- [x] Add performance tests
+- [x] Add possibility of detecting colors and wrapping for other scripts
 - [x] bats -T test/ -j $(nproc --ignore 2)
 - [x] Upstream README.md from project
 - [x] Implement dynamic terminal width detection (checks width before each message display)

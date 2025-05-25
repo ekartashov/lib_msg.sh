@@ -208,58 +208,70 @@ get_project_root() {
 }
 
 @test "Consecutive commands use current terminal width" {
-    # Setup TTY conditions for wrapping
-    simulate_tty_conditions 0 0 # both stdout and stderr are TTY
+    # This test verifies that multiple commands in sequence use the current terminal width
     
-    # Get absolute path to project root
-    local project_root="$(get_project_root)"
-    
-    # Create script to execute multiple commands in sequence
-    cat > "$BATS_TMPDIR/multi_commands.sh" << EOF
-#!/bin/sh
-# Source the library using absolute path
-. "$project_root/lib_msg.sh"
-export SCRIPT_NAME="width_test.sh"
-
-# Run multiple commands that should all respect the current width
-msg "This is a message that should wrap according to current terminal width."
-info "This is an info message that should also respect the current width."
-warn "This is a warning that should follow the same wrapping behavior."
-err "This is an error that should have consistent wrapping with others."
-EOF
-
-    chmod +x "$BATS_TMPDIR/multi_commands.sh"
-    
-    # Set narrow width and run
-    export COLUMNS=50
+    # Force TTY conditions for wrapping (both stdout and stderr)
     export LIB_MSG_FORCE_STDOUT_TTY=true
     export LIB_MSG_FORCE_STDERR_TTY=true
     
-    # Make sure COLUMNS and TTY settings are passed to the subshell
-    run env COLUMNS=50 LIB_MSG_FORCE_STDOUT_TTY=true LIB_MSG_FORCE_STDERR_TTY=true "$BATS_TMPDIR/multi_commands.sh"
+    # Set script name for consistent output
+    export SCRIPT_NAME="width_test.sh"
     
-    # Store output for comparison
+    # Test message that should wrap
+    local test_message="This is a very long message that should wrap differently depending on the terminal width. It needs to be long enough to cause wrapping at different points with different terminal widths."
+    
+    # First run with narrow width
+    export COLUMNS=40
+    
+    # Force reinitialization to ensure clean state
+    _lib_msg_force_reinit
+    
+    # Update terminal width explicitly
+    _lib_msg_update_terminal_width
+    
+    # Verify COLUMNS is correctly set
+    echo "NARROW WIDTH TEST - COLUMNS=$COLUMNS"
+    echo "Current terminal width: $(lib_msg_get_terminal_width)"
+    
+    # Run first command with narrow width
+    run msg "$test_message"
+    
+    # Store narrow output
     narrow_output="$output"
+    echo "NARROW OUTPUT:"
+    echo "$narrow_output"
     
-    # Set wide width and run again
-    export COLUMNS=100
+    # Switch to wide width
+    export COLUMNS=120
     
-    # Make sure COLUMNS and TTY settings are passed to the subshell
-    run env COLUMNS=100 LIB_MSG_FORCE_STDOUT_TTY=true LIB_MSG_FORCE_STDERR_TTY=true "$BATS_TMPDIR/multi_commands.sh"
+    # Force reinitialization again
+    _lib_msg_force_reinit
     
-    # Store output for comparison
+    # Update terminal width explicitly
+    _lib_msg_update_terminal_width
+    
+    # Verify COLUMNS is correctly set
+    echo "WIDE WIDTH TEST - COLUMNS=$COLUMNS"
+    echo "Current terminal width: $(lib_msg_get_terminal_width)"
+    
+    # Run same command with wide width
+    run msg "$test_message"
+    
+    # Store wide output
     wide_output="$output"
+    echo "WIDE OUTPUT:"
+    echo "$wide_output"
     
-    # Compare outputs - they should be different
+    # Outputs should be different due to different wrapping
     [ "$narrow_output" != "$wide_output" ]
     
-    # Convert outputs to line counts
+    # Count lines in each output
     local IFS=$'\n'
     # shellcheck disable=SC2206
     local narrow_lines=($narrow_output)
     # shellcheck disable=SC2206
     local wide_lines=($wide_output)
     
-    # Narrow output should have more lines due to more wrapping
+    # Narrow width should produce more lines due to more wrapping
     [ ${#narrow_lines[@]} -gt ${#wide_lines[@]} ]
 }

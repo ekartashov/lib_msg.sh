@@ -111,11 +111,8 @@ run_performance_test() {
   
   echo "ANSI stripping performance test - small input (100 chars)" >&3
   
-  local shell_time=$(run_performance_test _lib_msg_strip_ansi_shell "$input")
-  echo "Shell implementation: $shell_time" >&3
-  
-  local sed_time=$(run_performance_test _lib_msg_strip_ansi_sed "$input")
-  echo "Sed implementation: $sed_time" >&3
+  local implementation_time=$(run_performance_test _lib_msg_strip_ansi "$input")
+  echo "Implementation: $implementation_time" >&3
   
   echo "" >&3
 }
@@ -125,11 +122,8 @@ run_performance_test() {
   
   echo "ANSI stripping performance test - medium input (1000 chars)" >&3
   
-  local shell_time=$(run_performance_test _lib_msg_strip_ansi_shell "$input")
-  echo "Shell implementation: $shell_time" >&3
-  
-  local sed_time=$(run_performance_test _lib_msg_strip_ansi_sed "$input")
-  echo "Sed implementation: $sed_time" >&3
+  local implementation_time=$(run_performance_test _lib_msg_strip_ansi "$input")
+  echo "Implementation: $implementation_time" >&3
   
   echo "" >&3
 }
@@ -139,11 +133,8 @@ run_performance_test() {
   
   echo "ANSI stripping performance test - large input (5000 chars)" >&3
   
-  local shell_time=$(run_performance_test _lib_msg_strip_ansi_shell "$input" 20)
-  echo "Shell implementation: $shell_time" >&3
-  
-  local sed_time=$(run_performance_test _lib_msg_strip_ansi_sed "$input" 20)
-  echo "Sed implementation: $sed_time" >&3
+  local implementation_time=$(run_performance_test _lib_msg_strip_ansi "$input" 20)
+  echo "Implementation: $implementation_time" >&3
   
   echo "" >&3
 }
@@ -189,16 +180,8 @@ run_performance_test() {
   
   echo "Newline to space conversion - small input (100 chars)" >&3
   
-  local shell_time=$(run_performance_test _lib_msg_tr_newline_to_space_shell 10 "$input")
-  echo "Shell implementation: $shell_time" >&3
-  
-  # Only run if tr is available
-  if _lib_msg_has_command tr; then
-    local tr_cmd_time=$(run_performance_test "tr_wrapper" 10 "$input")
-    echo "tr command: $tr_cmd_time" >&3
-  else
-    echo "tr command not available, skipping" >&3
-  fi
+  local implementation_time=$(run_performance_test _lib_msg_tr_newline_to_space 10 "$input")
+  echo "Implementation: $implementation_time" >&3
   
   echo "" >&3
 }
@@ -208,16 +191,8 @@ run_performance_test() {
   
   echo "Newline to space conversion - medium input (1000 chars)" >&3
   
-  local shell_time=$(run_performance_test _lib_msg_tr_newline_to_space_shell 10 "$input")
-  echo "Shell implementation: $shell_time" >&3
-  
-  # Only run if tr is available
-  if _lib_msg_has_command tr; then
-    local tr_cmd_time=$(run_performance_test "tr_wrapper" 10 "$input")
-    echo "tr command: $tr_cmd_time" >&3
-  else
-    echo "tr command not available, skipping" >&3
-  fi
+  local implementation_time=$(run_performance_test _lib_msg_tr_newline_to_space 10 "$input")
+  echo "Implementation: $implementation_time" >&3
   
   echo "" >&3
 }
@@ -227,16 +202,8 @@ run_performance_test() {
   
   echo "Newline to space conversion - large input (5000 chars)" >&3
   
-  local shell_time=$(run_performance_test _lib_msg_tr_newline_to_space_shell 5 "$input")
-  echo "Shell implementation: $shell_time" >&3
-  
-  # Only run if tr is available
-  if _lib_msg_has_command tr; then
-    local tr_cmd_time=$(run_performance_test "tr_wrapper" 5 "$input")
-    echo "tr command: $tr_cmd_time" >&3
-  else
-    echo "tr command not available, skipping" >&3
-  fi
+  local implementation_time=$(run_performance_test _lib_msg_tr_newline_to_space 5 "$input")
+  echo "Implementation: $implementation_time" >&3
   
   echo "" >&3
 }
@@ -246,16 +213,8 @@ run_performance_test() {
   
   echo "Whitespace removal - small input (100 chars)" >&3
   
-  local shell_time=$(run_performance_test _lib_msg_tr_remove_whitespace_shell 10 "$input")
-  echo "Shell implementation: $shell_time" >&3
-  
-  # Only run if tr is available
-  if _lib_msg_has_command tr; then
-    local tr_cmd_time=$(run_performance_test "tr_remove_wrapper" 10 "$input")
-    echo "tr command: $tr_cmd_time" >&3
-  else
-    echo "tr command not available, skipping" >&3
-  fi
+  local implementation_time=$(run_performance_test _lib_msg_tr_remove_whitespace 10 "$input")
+  echo "Implementation: $implementation_time" >&3
   
   echo "" >&3
 }
@@ -265,16 +224,8 @@ run_performance_test() {
   
   echo "Whitespace removal - medium input (1000 chars)" >&3
   
-  local shell_time=$(run_performance_test _lib_msg_tr_remove_whitespace_shell 10 "$input")
-  echo "Shell implementation: $shell_time" >&3
-  
-  # Only run if tr is available
-  if _lib_msg_has_command tr; then
-    local tr_cmd_time=$(run_performance_test "tr_remove_wrapper" 10 "$input")
-    echo "tr command: $tr_cmd_time" >&3
-  else
-    echo "tr command not available, skipping" >&3
-  fi
+  local implementation_time=$(run_performance_test _lib_msg_tr_remove_whitespace 10 "$input")
+  echo "Implementation: $implementation_time" >&3
   
   echo "" >&3
 }
@@ -284,27 +235,10 @@ run_performance_test() {
   
   echo "Whitespace removal - large input (5000 chars)" >&3
   
-  local shell_time=$(run_performance_test _lib_msg_tr_remove_whitespace_shell 5 "$input")
-  echo "Shell implementation: $shell_time" >&3
-  
-  # Only run if tr is available
-  if _lib_msg_has_command tr; then
-    local tr_cmd_time=$(run_performance_test "tr_remove_wrapper" 5 "$input")
-    echo "tr command: $tr_cmd_time" >&3
-  else
-    echo "tr command not available, skipping" >&3
-  fi
+  local implementation_time=$(run_performance_test _lib_msg_tr_remove_whitespace 5 "$input")
+  echo "Implementation: $implementation_time" >&3
   
   echo "" >&3
-}
-
-# Wrapper functions for tr command
-tr_wrapper() {
-  printf '%s' "$1" | tr '\n' ' '
-}
-
-tr_remove_wrapper() {
-  printf '%s' "$1" | tr -d '[:space:]'
 }
 
 @test "Performance: End-to-end message processing - small message (100 chars)" {

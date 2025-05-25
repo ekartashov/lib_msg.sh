@@ -323,7 +323,7 @@ Additional documents for developers, including future plans and improvement idea
 
 Performance tests reveal significant differences between implementation methods:
 -   **External Commands vs. Pure Shell:** Performance testing reveals dramatic differences between the implementations:
-    - **ANSI Stripping:** `sed` implementation is up to 2240x faster than pure shell for large inputs (5000 chars)
+    - **ANSI Stripping:** While previously the `sed` implementation was dramatically faster than pure shell, our optimized shell implementation now performs comparably to `sed` (7.86ms vs 7.76ms for 5000 chars)
     - **Newline Conversion/Whitespace Removal:** `tr` command outperforms shell by 14-724x depending on input size
     - **Text Wrapping:** Testing revealed the pure shell implementation actually outperforms the `awk` implementation, which is why we now exclusively use the shell implementation for text wrapping
     

@@ -1,22 +1,36 @@
 # shellcheck shell=sh
+# lib_msg.sh - POSIX-compliant shell library for formatted messages
+# License: GNU General Public License v3.0
 
-# --- Command Availability Detection ---
+# ========================================================================
+# --- Internal Utility Functions ---
+# ========================================================================
+
 _lib_msg_has_command() {
-    # Use a more specific check that will work with BATS command stubbing
+    # Check if a command is available (works with BATS command stubbing)
     if ! command -v "$1" >/dev/null 2>&1; then
         return 1
     fi
     return 0
 }
 
-# --- lib_msg TTY and Width Detection ---
-_LIB_MSG_STDOUT_IS_TTY="" # Unset initially
-_LIB_MSG_STDERR_IS_TTY="" # Unset initially
-_LIB_MSG_TERMINAL_WIDTH=0   # Default to 0 (no wrapping)
+# ========================================================================
+# --- TTY Detection and Terminal Width Management ---
+# ========================================================================
 
-# This function is no longer used
-_lib_msg_test_t() {
-    test -t "$1"
+# Global state variables
+_LIB_MSG_STDOUT_IS_TTY=""  # Unset initially
+_LIB_MSG_STDERR_IS_TTY=""  # Unset initially
+_LIB_MSG_TERMINAL_WIDTH=0  # Default to 0 (no wrapping)
+
+# Function for test force-reinitialization (used by tests)
+# This allows tests to reset the library state between test cases
+_lib_msg_force_reinit() {
+    _LIB_MSG_STDOUT_IS_TTY=""
+    _LIB_MSG_STDERR_IS_TTY=""
+    _LIB_MSG_TERMINAL_WIDTH=0
+    _lib_msg_init_detection
+    _lib_msg_init_colors
 }
 
 # We need BATS to be able to stub this function for testing
@@ -49,7 +63,7 @@ _lib_msg_init_detection() {
         fi
     fi
 
-    # Initialize terminal width (done here for historical reasons)
+    # Initialize terminal width
     _lib_msg_update_terminal_width
 }
 
@@ -61,8 +75,6 @@ _lib_msg_update_terminal_width() {
 
     # Critical: If both stdout and stderr are not TTY, always use width 0
     if [ "$_LIB_MSG_STDOUT_IS_TTY" = "false" ] && [ "$_LIB_MSG_STDERR_IS_TTY" = "false" ]; then
-        # Force to 0 for test compliance and correctness
-        _LIB_MSG_TERMINAL_WIDTH=0
         return
     fi
     
@@ -70,17 +82,19 @@ _lib_msg_update_terminal_width() {
     _temp_cols="${COLUMNS:-}"
     case "$_temp_cols" in
         ''|*[!0-9]*) _LIB_MSG_TERMINAL_WIDTH=0 ;;
-        0) _LIB_MSG_TERMINAL_WIDTH=0 ;;
-        0*) _LIB_MSG_TERMINAL_WIDTH=0 ;;
+        0|0*) _LIB_MSG_TERMINAL_WIDTH=0 ;;
         *[0-9]) _LIB_MSG_TERMINAL_WIDTH="$_temp_cols" ;;
-        *) _LIB_MSG_TERMINAL_WIDTH=0 ;;
     esac
 }
 
-# Initialize TTY detection only once at library load time
+# Initialize TTY detection at library load time
 _lib_msg_init_detection
 
-# --- ANSI Color Codes (Initialize Once) ---
+# ========================================================================
+# --- ANSI Color Codes and Special Characters ---
+# ========================================================================
+
+# Color code variables
 _LIB_MSG_CLR_RESET=""
 _LIB_MSG_CLR_BLACK=""
 _LIB_MSG_CLR_RED=""
@@ -92,8 +106,15 @@ _LIB_MSG_CLR_CYAN=""
 _LIB_MSG_CLR_WHITE=""
 _LIB_MSG_CLR_BOLD=""
 
+# Special characters for internal use
+_LIB_MSG_NL='
+'
+_LIB_MSG_ESC=$(printf '\033')
+_LIB_MSG_RS=$(printf '\036') # Record Separator (unlikely to appear in normal text)
+
 _lib_msg_init_colors() {
-    _LIB_MSG_CLR_RESET="" # Clear them first
+    # Reset all color codes first
+    _LIB_MSG_CLR_RESET=""
     _LIB_MSG_CLR_BLACK=""
     _LIB_MSG_CLR_RED=""
     _LIB_MSG_CLR_GREEN=""
@@ -103,6 +124,8 @@ _lib_msg_init_colors() {
     _LIB_MSG_CLR_CYAN=""
     _LIB_MSG_CLR_WHITE=""
     _LIB_MSG_CLR_BOLD=""
+    
+    # Only set color codes if at least one output stream is a TTY
     if [ "$_LIB_MSG_STDOUT_IS_TTY" = "true" ] || [ "$_LIB_MSG_STDERR_IS_TTY" = "true" ]; then
         _LIB_MSG_CLR_RESET=$(printf '\033[0m')
         _LIB_MSG_CLR_BLACK=$(printf '\033[0;30m')
@@ -116,20 +139,15 @@ _lib_msg_init_colors() {
         _LIB_MSG_CLR_BOLD=$(printf '\033[1m')
     fi
 }
+
+# Initialize colors at library load time
 _lib_msg_init_colors
 
-_LIB_MSG_NL='
-'
-_LIB_MSG_ESC=$(printf '\033')
-_LIB_MSG_RS=$(printf '\036') # Record Separator (unlikely to appear in normal text)
-# --- End lib_msg TTY and Width Detection ---
+# ========================================================================
+# --- ANSI Escape Sequence Handling ---
+# ========================================================================
 
-# The record separator is used internally for line delimiting
-# making the code POSIX-compatible without relying on arrays
-
-# --- ANSI Stripping Implementations ---
-
-# Shell implementation for stripping ANSI escape sequences
+# Pure shell implementation for stripping ANSI escape sequences
 _lib_msg_strip_ansi_shell() {
     _input_str_to_strip="$1"
     _result_str=""
@@ -218,19 +236,23 @@ _lib_msg_strip_ansi_sed() {
 }
 
 # Select the best available implementation for stripping ANSI sequences
-# Define as a function that checks availability each time to work properly with command stubbing
+# Checks availability each time to work properly with command stubbing in tests
 _lib_msg_strip_ansi() {
     if _lib_msg_has_command sed; then
+        # Use optimized sed implementation if available
         _lib_msg_strip_ansi_sed "$1"
     else
+        # Fall back to pure shell implementation
         _lib_msg_strip_ansi_shell "$1"
     fi
 }
 
+# ========================================================================
 # --- Text Wrapping Implementations ---
+# ========================================================================
 
 # POSIX sh implementation (no arrays) for wrapping text
-# Uses $_LIB_MSG_RS (record separator) to delimit lines
+# Uses $_LIB_MSG_RS (record separator) to delimit lines for POSIX compatibility
 _lib_msg_wrap_text_sh() {
     _text_to_wrap="$1"
     _max_width="$2"
@@ -239,7 +261,7 @@ _lib_msg_wrap_text_sh() {
     # Replace newlines with spaces to match AWK implementation behavior
     # This is crucial to ensure similar handling of multi-line input across both implementations
     # The tr command needs to be properly escaped to handle input with special characters
-    _text_to_wrap="$(printf "%s" "$_text_to_wrap" | tr '\n' ' ')"
+    _text_to_wrap="$(_lib_msg_tr_newline_to_space "$_text_to_wrap")"
     
     _temp_text_for_check="$_text_to_wrap"
     _old_ifs_check="$IFS"
@@ -392,7 +414,7 @@ _lib_msg_wrap_text_awk() {
     fi
 
     # First convert newlines to spaces for consistent behavior with shell implementation
-    _text_to_wrap_nl_normalized=$(printf '%s' "$_text_to_wrap" | tr '\n' ' ')
+    _text_to_wrap_nl_normalized="$(_lib_msg_tr_newline_to_space "$_text_to_wrap")"
 
     _result=$(printf '%s' "$_text_to_wrap_nl_normalized" | awk -v max_width="$_max_width" -v rs="$(printf '\036')" '
     BEGIN {
@@ -483,23 +505,83 @@ _lib_msg_wrap_text_awk() {
     printf "%s" "$_result"
 }
 
-# This function selects the best available text wrapping implementation (_awk or _sh)
+# Pure shell implementation to replace tr for newline to space conversion
+_lib_msg_tr_newline_to_space_shell() {
+    _input="$1"
+    _result=""
+    _i=0
+    
+    while [ "$_i" -lt "${#_input}" ]; do
+        _char="${_input:$_i:1}"
+        if [ "$_char" = $'\n' ]; then
+            _result="${_result} "
+        else
+            _result="${_result}${_char}"
+        fi
+        _i=$((_i + 1))
+    done
+    
+    printf '%s' "$_result"
+}
+
+# Pure shell implementation to replace tr for removing whitespace
+_lib_msg_tr_remove_whitespace_shell() {
+    _input="$1"
+    _result=""
+    _i=0
+    
+    while [ "$_i" -lt "${#_input}" ]; do
+        _char="${_input:$_i:1}"
+        case "$_char" in
+            " "|$'\t'|$'\n'|$'\r'|$'\v'|$'\f')
+                # Skip whitespace
+                ;;
+            *)
+                _result="${_result}${_char}"
+                ;;
+        esac
+        _i=$((_i + 1))
+    done
+    
+    printf '%s' "$_result"
+}
+
+# Function to convert newlines to spaces using best available method
+_lib_msg_tr_newline_to_space() {
+    _input="$1"
+    
+    if _lib_msg_has_command tr; then
+        printf '%s' "$_input" | tr '\n' ' '
+    else
+        _lib_msg_tr_newline_to_space_shell "$_input"
+    fi
+}
+
+# Function to remove all whitespace using best available method
+_lib_msg_tr_remove_whitespace() {
+    _input="$1"
+    
+    if _lib_msg_has_command tr; then
+        printf '%s' "$_input" | tr -d '[:space:]'
+    else
+        _lib_msg_tr_remove_whitespace_shell "$_input"
+    fi
+}
+
+# This function selects the best available text wrapping implementation
 # and returns the result as an RS-delimited string.
-# The underlying implementations are POSIX sh compatible.
 _lib_msg_wrap_text() {
     _text_to_wrap="$1"
     _max_width="$2"
     
-    # Handle the special case of empty input or only whitespace - always create at least one line
-    # First check if completely empty
+    # Handle the special case of empty input or only whitespace
     if [ -z "$_text_to_wrap" ]; then
         printf "%s" ""
         return
     fi
     
-    # Then check if it's only spaces (which would be treated differently by the wrapping algorithms)
-    # By removing all spaces and checking if result is empty
-    _text_no_spaces="$(printf '%s' "$_text_to_wrap" | tr -d '[:space:]')"
+    # Check if input is only whitespace
+    _text_no_spaces="$(_lib_msg_tr_remove_whitespace "$_text_to_wrap")"
     if [ -z "$_text_no_spaces" ]; then
         # It's only whitespace, treat as empty
         printf "%s" ""
@@ -512,25 +594,28 @@ _lib_msg_wrap_text() {
         return
     fi
     
-    # Select the best implementation to get RS-delimited lines
-    # First check if implementation is forced via environment variable
+    # Select the best implementation for text wrapping
     if [ -n "$_LIB_MSG_FORCE_TEXT_WRAP_IMPL" ]; then
+        # Implementation forced via environment variable (for testing)
         if [ "$_LIB_MSG_FORCE_TEXT_WRAP_IMPL" = "sh" ]; then
             _result=$(_lib_msg_wrap_text_sh "$_text_to_wrap" "$_max_width")
         else
             _result=$(_lib_msg_wrap_text_awk "$_text_to_wrap" "$_max_width")
         fi
-    # Otherwise check command availability each time for proper stubbing support in tests
+    # Check command availability each time for proper stubbing support in tests
     elif _lib_msg_has_command awk; then
+        # Use optimized awk implementation if available
         _result=$(_lib_msg_wrap_text_awk "$_text_to_wrap" "$_max_width")
     else
+        # Fall back to pure shell implementation
         _result=$(_lib_msg_wrap_text_sh "$_text_to_wrap" "$_max_width")
     fi
     
-    # Return the RS-delimited string directly
+    # Return the RS-delimited string
     printf "%s" "$_result"
 }
 
+# Helper function to colorize text if TTY
 _lib_msg_colorize() {
     _text_to_color_val="$1"
     _color_code_val="$2"
@@ -543,6 +628,8 @@ _lib_msg_colorize() {
     fi
 }
 
+# Core function that handles message formatting and output
+# All public API functions ultimately call this
 _print_msg_core() {
     _message_content="$1"
     _prefix_str="$2"
@@ -550,29 +637,34 @@ _print_msg_core() {
     _no_final_newline="$4"
 
     # Update terminal width before formatting output
+    # This is critical for dynamic width detection
     _lib_msg_update_terminal_width
 
+    # Determine if output stream is a TTY
     _is_tty=$_LIB_MSG_STDOUT_IS_TTY
     if [ "$_is_stderr" = "true" ]; then
         _is_tty=$_LIB_MSG_STDERR_IS_TTY
     fi
 
+    # Calculate visible prefix length (without ANSI codes)
     _stripped_prefix_for_len=$(_lib_msg_strip_ansi "$_prefix_str")
     _visible_prefix_len=${#_stripped_prefix_for_len}
     _processed_output=""
 
+    # Handle text wrapping if we're outputting to a TTY and have a valid width
     if [ "$_is_tty" = "true" ] && [ "$_LIB_MSG_TERMINAL_WIDTH" -gt 0 ]; then
         _text_wrap_width=$((_LIB_MSG_TERMINAL_WIDTH - _visible_prefix_len))
 
+        # Only wrap if we have enough space for meaningful text (at least 5 chars)
         if [ "$_text_wrap_width" -ge 5 ]; then
             # Get wrapped lines as a string with $_LIB_MSG_RS separator
             _wrapped_lines=$(_lib_msg_wrap_text "$_message_content" "$_text_wrap_width")
             
-            # No lines generated? Handle empty case
+            # Handle special case: empty wrapped lines but non-empty message content
             if [ -z "$_wrapped_lines" ] && [ -n "$_message_content" ]; then
                 _processed_output="${_prefix_str}${_message_content}"
             else
-                # Process the wrapped lines
+                # Process the wrapped lines with proper indentation
                 _indent_spaces=$(printf "%*s" "$_visible_prefix_len" "")
                 _first_line=true
                 _remaining_lines="$_wrapped_lines"
@@ -590,7 +682,7 @@ _print_msg_core() {
                             ;;
                     esac
                     
-                    # Add current line to output with appropriate prefix
+                    # Add current line to output with appropriate prefix/indentation
                     if $_first_line; then
                         _processed_output="${_prefix_str}${_current_line}"
                         _first_line=false
@@ -602,13 +694,16 @@ _print_msg_core() {
                     [ -z "$_remaining_lines" ] && break
                 done
             fi
-        else # Prefix too long for meaningful wrapping
+        else
+            # Prefix too long for meaningful wrapping, so don't wrap
             _processed_output="${_prefix_str}${_message_content}"
         fi
-    else # Not a TTY or no terminal width for wrapping
+    else
+        # Not a TTY or no terminal width for wrapping
         _processed_output="${_prefix_str}${_message_content}"
     fi
 
+    # Output the processed message to the appropriate stream
     if [ "$_no_final_newline" = "true" ]; then
         if [ "$_is_stderr" = "true" ]; then
             printf '%s' "$_processed_output" >&2
@@ -624,6 +719,12 @@ _print_msg_core() {
     fi
 }
 
+# ========================================================================
+# --- Core Message Formatting and Display ---
+# ========================================================================
+
+# Helper function to detect if a 'return' statement is valid in the current context
+# Used by die() to determine whether to exit or return
 _lib_msg_is_return_valid() {
     if (return 0 2>/dev/null); then
         return 0
@@ -632,26 +733,36 @@ _lib_msg_is_return_valid() {
     fi
 }
 
+# ========================================================================
+# --- Public API Functions ---
+# ========================================================================
+
+# Output an error message to stderr with red "E:" prefix and newline
 err() {
     _prefix_tag=$(_lib_msg_colorize "E: " "$_LIB_MSG_CLR_RED" "$_LIB_MSG_STDERR_IS_TTY")
     _print_msg_core "$1" "${SCRIPT_NAME:-lib_msg.sh}: ${_prefix_tag}" "true" ""
 }
 
+# Output an error message to stderr with red "E:" prefix and NO newline
 errn() {
     _prefix_tag=$(_lib_msg_colorize "E: " "$_LIB_MSG_CLR_RED" "$_LIB_MSG_STDERR_IS_TTY")
     _print_msg_core "$1" "${SCRIPT_NAME:-lib_msg.sh}: ${_prefix_tag}" "true" "true"
 }
 
+# Output a warning message to stderr with yellow "W:" prefix and newline
 warn() {
     _prefix_tag=$(_lib_msg_colorize "W: " "$_LIB_MSG_CLR_YELLOW" "$_LIB_MSG_STDERR_IS_TTY")
     _print_msg_core "$1" "${SCRIPT_NAME:-lib_msg.sh}: ${_prefix_tag}" "true" ""
 }
 
+# Output a warning message to stderr with yellow "W:" prefix and NO newline
 warnn() {
     _prefix_tag=$(_lib_msg_colorize "W: " "$_LIB_MSG_CLR_YELLOW" "$_LIB_MSG_STDERR_IS_TTY")
     _print_msg_core "$1" "${SCRIPT_NAME:-lib_msg.sh}: ${_prefix_tag}" "true" "true"
 }
 
+# Output a fatal error message to stderr and exit (or return if in sourced context)
+# Usage: die [exit_code] "message"
 die() {
     _error_code_arg="$1"
     shift # Remove error code, remaining args are the message
@@ -702,19 +813,23 @@ die() {
     fi
 }
 
+# Output a standard message to stdout with newline
 msg() {
     _print_msg_core "$1" "${SCRIPT_NAME:-lib_msg.sh}: " "" ""
 }
 
+# Output a standard message to stdout with NO newline
 msgn() {
     _print_msg_core "$1" "${SCRIPT_NAME:-lib_msg.sh}: " "" "true"
 }
 
+# Output an information message to stdout with blue "I:" prefix and newline
 info() {
     _prefix_tag=$(_lib_msg_colorize "I: " "$_LIB_MSG_CLR_BLUE" "$_LIB_MSG_STDOUT_IS_TTY")
     _print_msg_core "$1" "${SCRIPT_NAME:-lib_msg.sh}: ${_prefix_tag}" "" ""
 }
 
+# Output an information message to stdout with blue "I:" prefix and NO newline
 infon() {
     _prefix_tag=$(_lib_msg_colorize "I: " "$_LIB_MSG_CLR_BLUE" "$_LIB_MSG_STDOUT_IS_TTY")
     _print_msg_core "$1" "${SCRIPT_NAME:-lib_msg.sh}: ${_prefix_tag}" "" "true"

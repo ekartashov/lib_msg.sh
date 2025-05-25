@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 
-# This file contains tests for the _lib_msg_wrap_text() dispatcher function
-# in lib_msg.sh, which chooses between AWK and pure shell implementations.
+# This file contains tests for the _lib_msg_wrap_text() function
+# in lib_msg.sh, which now uses the pure shell implementation directly.
 
 # Load BATS support and assertion libraries
 load "libs/bats-support/load"
@@ -70,137 +70,33 @@ ${params[i]}"
 
         echo "Test Case $test_idx ('$description'): Testing _lib_msg_wrap_text with assert_wrap_text_rs" >&3
         
-        # Use our new helper to test _lib_msg_wrap_text with its RS-delimited string output
-        # This will use the default dispatcher logic (AWK if available, else shell)
+        # Use our helper to test _lib_msg_wrap_text with its RS-delimited string output
         assert_wrap_text_rs "$input_text" "$width" "$expected_output"
     done
 }
-# --- _lib_msg_wrap_text() Dispatcher Tests ---
 
-@test "_lib_msg_wrap_text(): dispatcher chooses awk implementation when awk is available" {
-    if ! command -v awk >/dev/null 2>&1; then
-        skip "awk command is not available, cannot test awk dispatch"
-    fi
-
-    # Define unique markers for stub calls
-    local awk_marker="AWK_STUB_CALLED_MARKER_UNIQUE_STRING"
+@test "_lib_msg_wrap_text(): uses shell implementation" {
+    # Define markers for stub calls
     local shell_marker="SHELL_STUB_CALLED_MARKER_UNIQUE_STRING"
 
-    # Save original functions
-    local original_awk_func
-    original_awk_func=$(declare -f _lib_msg_wrap_text_awk)
+    # Save original function
     local original_sh_func
     original_sh_func=$(declare -f _lib_msg_wrap_text_sh)
 
-    # Override the implementation functions directly
-    _lib_msg_wrap_text_awk() {
-        echo "DEBUG Test1: awk_func CALLED DIRECTLY" >&2
-        echo "$awk_marker"
-    }
-    
+    # Override the implementation function directly
     _lib_msg_wrap_text_sh() {
-        echo "DEBUG Test1: shell_func CALLED DIRECTLY (UNEXPECTED)" >&2
+        echo "DEBUG: shell_func CALLED DIRECTLY" >&2
         echo "$shell_marker"
     }
     
-    # Force the dispatcher to choose the awk implementation
-    export _LIB_MSG_FORCE_TEXT_WRAP_IMPL="awk"
-    
-    echo "DEBUG Test1: Before _lib_msg_wrap_text call. awk_marker='$awk_marker', shell_marker='$shell_marker'" >&2
-    local dispatcher_output
-    dispatcher_output=$(_lib_msg_wrap_text "Test text for awk dispatch" 10)
+    local func_output
+    func_output=$(_lib_msg_wrap_text "Test text" 10)
     local exit_status=$?
-    echo "DEBUG Test1: After _lib_msg_wrap_text call. Exit status: $exit_status. dispatcher_output: [$dispatcher_output]" >&2
-
-    # Restore original functions
-    eval "$original_awk_func"
+    
+    # Restore original function
     eval "$original_sh_func"
     
-    # Clean up environment variable
-    unset _LIB_MSG_FORCE_TEXT_WRAP_IMPL
-    
-    # Test expectations - use direct string comparison instead of assert_output
-    assert_equal "$dispatcher_output" "$awk_marker" "AWK implementation should be called with _LIB_MSG_FORCE_TEXT_WRAP_IMPL=awk"
-    [ "$dispatcher_output" != "$shell_marker" ] || fail "SHELL implementation should NOT be called with _LIB_MSG_FORCE_TEXT_WRAP_IMPL=awk"
-}
-
-@test "_lib_msg_wrap_text(): dispatcher chooses shell implementation when awk is unavailable" {
-    # Define unique markers for stub calls
-    local awk_marker="AWK_STUB_CALLED_MARKER_UNIQUE_STRING_NOAWK" # Different marker for clarity
-    local shell_marker="SHELL_STUB_CALLED_MARKER_UNIQUE_STRING_NOAWK"
-
-    # Save original functions
-    local original_awk_func
-    original_awk_func=$(declare -f _lib_msg_wrap_text_awk)
-    local original_sh_func
-    original_sh_func=$(declare -f _lib_msg_wrap_text_sh)
-
-    # Override the implementation functions directly
-    _lib_msg_wrap_text_awk() {
-        echo "DEBUG Test2: awk_func CALLED DIRECTLY (UNEXPECTED)" >&2
-        echo "$awk_marker"
-    }
-    
-    _lib_msg_wrap_text_sh() {
-        echo "DEBUG Test2: shell_func CALLED DIRECTLY" >&2
-        echo "$shell_marker"
-    }
-    
-    # Force the dispatcher to choose the shell implementation
-    export _LIB_MSG_FORCE_TEXT_WRAP_IMPL="sh"
-    
-    # Verify the environment variable is set correctly
-    echo "DEBUG Test2: Environment var check: _LIB_MSG_FORCE_TEXT_WRAP_IMPL=${_LIB_MSG_FORCE_TEXT_WRAP_IMPL}" >&2
-    
-    echo "DEBUG Test2: Before _lib_msg_wrap_text call. awk_marker='$awk_marker', shell_marker='$shell_marker'" >&2
-    local dispatcher_output
-    dispatcher_output=$(_lib_msg_wrap_text "Test text for shell dispatch" 10)
-    local exit_status=$?
-    echo "DEBUG Test2: After _lib_msg_wrap_text call. Exit status: $exit_status. dispatcher_output: [$dispatcher_output]" >&2
-
-    # Restore original functions
-    eval "$original_awk_func"
-    eval "$original_sh_func"
-    
-    # Clean up environment variable
-    unset _LIB_MSG_FORCE_TEXT_WRAP_IMPL
-    
-    # Test expectations - use direct string comparison instead of assert_output
-    assert_equal "$dispatcher_output" "$shell_marker" "SHELL implementation should be called with _LIB_MSG_FORCE_TEXT_WRAP_IMPL=sh"
-    [ "$dispatcher_output" != "$awk_marker" ] || fail "AWK implementation should NOT be called with _LIB_MSG_FORCE_TEXT_WRAP_IMPL=sh"
-}
-
-@test "_lib_msg_wrap_text(): Shell and AWK implementations produce identical results" {
-    # Skip this test if awk is not available, as we need both for comparison
-    if ! command -v awk >/dev/null 2>&1; then
-        skip "awk command is not available, cannot compare implementations"
-    fi
-
-    # Test cases to compare both implementations
-    local test_cases=(
-        "Simple text with no wrapping needed"
-        "This is a longer text that will require wrapping at reasonable terminal widths"
-        "Supercalifragilisticexpialidocious is a very long word that needs splitting"
-        "Text with   multiple   spaces   between words"
-        "Short words a b c d e f g h i j k l m n o p"
-        "Text with special characters: !@#\$%^&*()_+{}[]|\\:;\"'<>,.?/"
-        "Multi-line
-input
-with existing
-line breaks"
-    )
-    
-    local shell_output
-    local awk_output
-
-    for input_case_text in "${test_cases[@]}"; do
-        for width in 10 20 40 80; do
-            # Get output directly from each implementation
-            shell_output=$(_lib_msg_wrap_text_sh "$input_case_text" "$width")
-            awk_output=$(_lib_msg_wrap_text_awk "$input_case_text" "$width")
-            
-            assert_equal "$shell_output" "$awk_output" "Direct outputs differ: Shell vs AWK for input '$input_case_text' at width $width. Shell: '$shell_output', AWK: '$awk_output'"
-        done
-    done
-    # No restoration needed as we are calling the functions directly and not modifying shared state for this test.
+    # Test expectations
+    assert_equal "$func_output" "$shell_marker" "Shell implementation should always be called"
+    [ $exit_status -eq 0 ] || fail "_lib_msg_wrap_text() should return exit code 0"
 }

@@ -8,13 +8,13 @@ load 'test_helpers'
 source "$BATS_TEST_DIRNAME/../lib_msg.sh"
 
 setup() {
-  # Save original environment
-  _orig_lib_msg_force_text_wrap_impl="$LIB_MSG_FORCE_TEXT_WRAP_IMPL"
+  # Setup for performance tests if needed
+  :
 }
 
 teardown() {
-  # Restore original environment
-  export LIB_MSG_FORCE_TEXT_WRAP_IMPL="$_orig_lib_msg_force_text_wrap_impl"
+  # Cleanup after performance tests if needed
+  :
 }
 
 # Generate test data of specified size
@@ -139,10 +139,10 @@ run_performance_test() {
   
   echo "ANSI stripping performance test - large input (5000 chars)" >&3
   
-  local shell_time=$(run_performance_test _lib_msg_strip_ansi_shell "$input" 5)
+  local shell_time=$(run_performance_test _lib_msg_strip_ansi_shell "$input" 20)
   echo "Shell implementation: $shell_time" >&3
   
-  local sed_time=$(run_performance_test _lib_msg_strip_ansi_sed "$input" 5)
+  local sed_time=$(run_performance_test _lib_msg_strip_ansi_sed "$input" 20)
   echo "Sed implementation: $sed_time" >&3
   
   echo "" >&3
@@ -153,15 +153,9 @@ run_performance_test() {
   
   echo "Text wrapping performance test - small input (100 chars, width 40)" >&3
   
-  # Force shell implementation
-  export LIB_MSG_FORCE_TEXT_WRAP_IMPL="sh"
+  # Use shell implementation (now the only implementation)
   local shell_time=$(run_performance_test _lib_msg_wrap_text 10 "$input" 40)
   echo "Shell implementation: $shell_time" >&3
-  
-  # Force awk implementation
-  export LIB_MSG_FORCE_TEXT_WRAP_IMPL="awk"
-  local awk_time=$(run_performance_test _lib_msg_wrap_text 10 "$input" 40)
-  echo "AWK implementation: $awk_time" >&3
   
   echo "" >&3
 }
@@ -171,15 +165,9 @@ run_performance_test() {
   
   echo "Text wrapping performance test - medium input (1000 chars, width 80)" >&3
   
-  # Force shell implementation
-  export LIB_MSG_FORCE_TEXT_WRAP_IMPL="sh"
+  # Use shell implementation (now the only implementation)
   local shell_time=$(run_performance_test _lib_msg_wrap_text 10 "$input" 80)
   echo "Shell implementation: $shell_time" >&3
-  
-  # Force awk implementation
-  export LIB_MSG_FORCE_TEXT_WRAP_IMPL="awk"
-  local awk_time=$(run_performance_test _lib_msg_wrap_text 10 "$input" 80)
-  echo "AWK implementation: $awk_time" >&3
   
   echo "" >&3
 }
@@ -189,15 +177,9 @@ run_performance_test() {
   
   echo "Text wrapping performance test - large input (5000 chars, width 100)" >&3
   
-  # Force shell implementation
-  export LIB_MSG_FORCE_TEXT_WRAP_IMPL="sh"
+  # Use shell implementation (now the only implementation)
   local shell_time=$(run_performance_test _lib_msg_wrap_text 3 "$input" 100)
   echo "Shell implementation: $shell_time" >&3
-  
-  # Force awk implementation
-  export LIB_MSG_FORCE_TEXT_WRAP_IMPL="awk"
-  local awk_time=$(run_performance_test _lib_msg_wrap_text 3 "$input" 100)
-  echo "AWK implementation: $awk_time" >&3
   
   echo "" >&3
 }

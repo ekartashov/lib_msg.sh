@@ -321,13 +321,24 @@ Additional documents for developers, including future plans and improvement idea
 
 ## Performance Considerations
 
-For optimal performance:
+Performance tests reveal significant differences between implementation methods:
 
--   **Having `sed` and `awk` available:** While the library provides pure POSIX shell fallbacks for all functionality, the `sed` and `awk` implementations are significantly more efficient, especially for text wrapping and ANSI code stripping operations.
--   **Memory Usage:** The pure shell fallbacks use more memory for string manipulation compared to the optimized implementations. This difference becomes more significant with large amounts of text.
--   **Performance Difference:** On systems with limited resources or when processing large text blocks, the performance gap between optimized implementations and pure shell fallbacks can be substantial.
+-   **External Commands vs. Pure Shell:** Performance testing reveals dramatic differences between the implementations:
+    - **ANSI Stripping:** `sed` implementation is up to 2240x faster than pure shell for large inputs (5000 chars)
+    - **Newline Conversion/Whitespace Removal:** `tr` command outperforms shell by 14-724x depending on input size
+    - **Text Wrapping:** Interestingly, shell implementation performs as well as or better than `awk`
+    
+-   **Scaling with Input Size:** The performance gap increases exponentially with input size:
+    - External command performance remains nearly constant regardless of input size
+    - Pure shell implementations scale linearly with input size
+    
+-   **Memory Usage:** The pure shell fallbacks use more memory for string manipulation compared to the optimized external command implementations. This difference becomes more significant with large amounts of text.
 
-The library automatically selects the best available implementation based on command availability, so having `sed` and `awk` installed ensures you get the best performance without any configuration changes.
+-   **Terminal Width Impact:** Narrower terminals (40 vs 80 columns) increase processing time for larger messages by approximately 35% due to increased wrapping operations.
+
+The library automatically selects the best available implementation based on command availability, which validates the hybrid approach of preferring external commands when available while maintaining shell fallbacks for portability. Having `sed` and `awk` installed ensures you get the best performance without any configuration changes.
+
+For detailed performance test results, see the [Testing Guide](./docs/TESTING.md#performance-test-results).
 
 ## License
 

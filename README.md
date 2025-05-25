@@ -11,6 +11,7 @@
 -   ANSI color support for messages if outputting to a TTY.
 -   `die` function to print an error message and exit with a specified code (or return if sourced).
 -   Dynamic terminal width detection (checks width before each message display).
+-   Public API for terminal state, text styling, and advanced formatting.
 
 ## Usage
 
@@ -63,6 +64,143 @@
 -   `warn "message"`: Prints a warning message with a yellow "W: " prefix and newline.
 -   `warnn "message"`: Prints a warning message with a yellow "W: " prefix but no trailing newline.
 -   `die <exit_code> "message"`: Prints an error message with a red "E: " prefix, then exits the script with `<exit_code>`. If the function is called from a sourced script, it returns with the error code instead of exiting.
+
+## Public API
+
+The library now provides a comprehensive public API that gives you access to all its core capabilities.
+
+### Configuration
+
+You can configure the library behavior using these environment variables:
+
+- `SCRIPT_NAME`: Sets the prefix for all messages (default: "lib_msg.sh")
+- `LIB_MSG_COLOR_MODE`: Controls color output with values:
+  - `auto`: Enable colors if outputting to a TTY (default)
+  - `on`: Enable colors regardless of TTY status (still respects NO_COLOR)
+  - `off`: Disable colors completely
+  - `force_on`: Enable colors regardless of TTY status or NO_COLOR
+- `NO_COLOR`: Standard environment variable that disables colors when set (unless LIB_MSG_COLOR_MODE=force_on)
+
+### TTY and Terminal Functions
+
+- `lib_msg_stdout_is_tty`: Returns "true" or "false" string indicating if stdout is a TTY
+- `lib_msg_stderr_is_tty`: Returns "true" or "false" string indicating if stderr is a TTY
+- `lib_msg_get_terminal_width`: Returns the current terminal width (0 if not a TTY or width unknown)
+- `lib_msg_update_terminal_width`: Forces updating terminal width from COLUMNS value
+
+Example:
+```sh
+if [ "$(lib_msg_stdout_is_tty)" = "true" ]; then
+    echo "Running in an interactive terminal"
+fi
+
+width=$(lib_msg_get_terminal_width)
+echo "Terminal is $width columns wide"
+```
+
+### Color Support Functions
+
+- `lib_msg_colors_enabled`: Returns "true" or "false" string indicating if colors are enabled
+- `lib_msg_reinit_colors`: Reinitializes color support based on current environment
+
+### Text Styling Functions
+
+The library exports SGR (Select Graphic Rendition) constants for styling:
+
+- Text formatting: `$_LIB_MSG_SGR_RESET`, `$_LIB_MSG_SGR_BOLD`, `$_LIB_MSG_SGR_ITALIC`, `$_LIB_MSG_SGR_UNDERLINE`, etc.
+- Foreground colors: `$_LIB_MSG_SGR_FG_RED`, `$_LIB_MSG_SGR_FG_GREEN`, `$_LIB_MSG_SGR_FG_BLUE`, etc.
+- Background colors: `$_LIB_MSG_SGR_BG_RED`, `$_LIB_MSG_SGR_BG_GREEN`, `$_LIB_MSG_SGR_BG_BLUE`, etc.
+- Bright variants: `$_LIB_MSG_SGR_FG_BRIGHT_GREEN`, `$_LIB_MSG_SGR_BG_BRIGHT_YELLOW`, etc.
+
+Functions for working with styles:
+
+- `lib_msg_build_style_sequence <sgr_codes...>`: Creates an ANSI style sequence from SGR codes
+- `lib_msg_apply_style <text> <style>`: Applies a style sequence to text if colors are enabled
+- `lib_msg_apply_style_if_tty <text> <style> <use_stderr>`: Applies styling if appropriate stream is a TTY
+
+Example:
+```sh
+# Create a bold red style
+bold_red=$(lib_msg_build_style_sequence "$_LIB_MSG_SGR_BOLD" "$_LIB_MSG_SGR_FG_RED")
+
+# Apply the style to text
+styled_text=$(lib_msg_apply_style "Important warning" "$bold_red")
+echo "$styled_text"
+
+# Or get a predefined style
+highlight_style=$(lib_msg_get_style "highlight")
+echo "$(lib_msg_apply_style "Highlighted text" "$highlight_style")"
+```
+
+### Text Processing Functions
+
+- `lib_msg_strip_ansi <text>`: Removes ANSI escape sequences from text
+- `lib_msg_get_wrapped_text <text> <width>`: Wraps text to specified width (use 0 for terminal width)
+
+Example:
+```sh
+# Strip ANSI codes
+raw_text=$(lib_msg_strip_ansi "$styled_text")
+
+# Wrap text to terminal width
+wrapped=$(lib_msg_get_wrapped_text "A long paragraph of text that needs to be wrapped to the appropriate width..." 0)
+echo "$wrapped"
+```
+
+### Custom Message Output Functions
+
+- `lib_msg_output <message> [prefix] [style] [use_stderr] [no_newline]`: Outputs a message with optional prefix and style
+- `lib_msg_output_n <message> [prefix] [style] [use_stderr]`: Same as above but without a trailing newline
+
+Example:
+```sh
+# Create a custom prefix with styling
+success_style=$(lib_msg_get_style "success")
+prefix=$(lib_msg_create_prefix "SUCCESS" "$success_style" "")
+
+# Output a message with this prefix
+lib_msg_output "Operation completed successfully" "$prefix"
+```
+
+### Prompt Functions
+
+- `lib_msg_prompt <prompt_text> [default_value] [style]`: Displays a prompt and returns user input
+- `lib_msg_prompt_yn <prompt_text> [default_y_or_n] [style]`: Displays a yes/no prompt and returns "true" or "false"
+
+Example:
+```sh
+# Simple prompt
+name=$(lib_msg_prompt "Enter your name" "User")
+echo "Hello, $name!"
+
+# Yes/No prompt
+if lib_msg_prompt_yn "Continue with the operation?" "y"; then
+    echo "Continuing..."
+else
+    echo "Operation cancelled."
+fi
+```
+
+### Convenience Functions
+
+- `lib_msg_get_style <style_name>`: Returns predefined style for common styles (error, warning, info, success, highlight, dim)
+- `lib_msg_create_prefix <tag> [tag_style] [bracket_style]`: Creates a formatted prefix like "[TAG] "
+- `lib_msg_progress_bar <current> <max> [width] [filled_char] [empty_char]`: Generates a text progress bar
+
+Example:
+```sh
+# Create a progress bar
+for i in 1 2 3 4 5; do
+    progress=$(lib_msg_progress_bar "$i" 5)
+    printf "\r%s" "$progress"
+    sleep 1
+done
+echo # Final newline
+```
+
+## Examples
+
+See the [`examples/public_api_demo.sh`](examples/public_api_demo.sh) script for a comprehensive demonstration of all public API functionality.
 
 ## Testing
 
@@ -161,6 +299,10 @@ The BATS helper libraries (`bats-assert`, `bats-support`, `bats-mock`) are inclu
     -   Detects whether it's being called from a sourced context or directly executed script using `_lib_msg_is_return_valid()`.
     -   If called in a sourced script/function, uses `return` with the error code to allow the calling script to continue.
     -   If called in a directly executed script, uses `exit` to terminate the entire script.
+-   **Public API Functions:**
+    -   Provide access to the library's core capabilities like TTY detection, color status, and text formatting.
+    -   Allow for custom styling and message formatting beyond the standard functions.
+    -   Support interactive prompts and progress indicators.
 
 ## Developer Documentation
 

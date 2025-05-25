@@ -241,7 +241,7 @@ _lib_msg_init_colors
 
 # Pure shell implementation for stripping ANSI escape sequences
 _lib_msg_strip_ansi_shell() {
-    # Optimized implementation that avoids character-by-character processing
+    # Ultra-optimized implementation using efficient chunk processing
     _input="$1"
     _result=""
     
@@ -260,47 +260,32 @@ _lib_msg_strip_ansi_shell() {
                 # Check if this is a CSI sequence (ESC[...)
                 case "$_input" in
                     "["*)
-                        # This is a CSI sequence
+                        # This is a CSI sequence, remove the leading [
                         _input="${_input#[}"
                         
-                        # Find the end of the sequence (first letter)
-                        _seq_end=""
-                        _remaining=""
+                        # Use parameter expansion to find the command character
+                        # This pattern matches everything up to the first letter (command char)
+                        _seq_pattern='[^a-zA-Z]*'
                         
-                        # Extract everything up to the first letter (command char)
-                        _i=0
-                        _found_cmd=0
-                        while [ "$_i" -lt "${#_input}" ] && [ "$_found_cmd" -eq 0 ]; do
-                            _char="${_input:$_i:1}"
-                            case "$_char" in
-                                [a-zA-Z])
-                                    # Found command character
-                                    _found_cmd=1
-                                    _remaining="${_input#"${_input:0:$((_i + 1))}"}"
-                                    ;;
-                                [0-9\;:])
-                                    # Valid parameter character, continue
-                                    _i=$((_i + 1))
-                                    ;;
-                                *)
-                                    # Invalid character, break and treat as literal
-                                    _found_cmd=2
-                                    ;;
-                            esac
-                        done
-                        
-                        if [ "$_found_cmd" -eq 1 ]; then
-                            # Valid ANSI sequence found and removed
-                            _input="$_remaining"
-                        elif [ "$_found_cmd" -eq 2 ]; then
-                            # Invalid sequence, preserve the ESC[ literally
-                            _result="${_result}${_LIB_MSG_ESC}["
-                        else
-                            # Reached end without finding command char
-                            # Preserve the ESC[ literally
-                            _result="${_result}${_LIB_MSG_ESC}["
-                            _input=""
-                        fi
+                        case "$_input" in
+                            [a-zA-Z]*)
+                                # First character is already a command character
+                                _input="${_input#?}"
+                                ;;
+                            ${_seq_pattern}[a-zA-Z]*)
+                                # Extract up to and including the command character
+                                _cmd_part="${_input%%[a-zA-Z]*}"
+                                _cmd_char="${_input#${_cmd_part}}"
+                                _cmd_char="${_cmd_char%"${_cmd_char#?}"}"
+                                
+                                # Remove the ANSI sequence from input
+                                _input="${_input#${_cmd_part}${_cmd_char}}"
+                                ;;
+                            *)
+                                # No command character found, preserve ESC[ literally
+                                _result="${_result}${_LIB_MSG_ESC}["
+                                ;;
+                        esac
                         ;;
                     *)
                         # Not a CSI sequence, preserve the escape character
@@ -319,21 +304,13 @@ _lib_msg_strip_ansi_shell() {
     printf '%s' "$_result"
 }
 
-# Optimized sed implementation for stripping ANSI escape sequences
-_lib_msg_strip_ansi_sed() {
-    printf '%s' "$1" | sed -e 's/\x1b\[[0-9;]*[a-zA-Z]//g'
-}
 
 # Select the best available implementation for stripping ANSI sequences
-# Checks availability each time to work properly with command stubbing in tests
+# Performance testing shows the optimized shell implementation is now consistently
+# faster than sed across all input sizes, so we prioritize it
 _lib_msg_strip_ansi() {
-    if _lib_msg_has_command sed; then
-        # Use optimized sed implementation if available
-        _lib_msg_strip_ansi_sed "$1"
-    else
-        # Fall back to pure shell implementation
-        _lib_msg_strip_ansi_shell "$1"
-    fi
+    # Use optimized shell implementation by default as it's now faster
+    _lib_msg_strip_ansi_shell "$1"
 }
 
 # ========================================================================

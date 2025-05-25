@@ -241,85 +241,82 @@ _lib_msg_init_colors
 
 # Pure shell implementation for stripping ANSI escape sequences
 _lib_msg_strip_ansi_shell() {
-    _input_str_to_strip="$1"
-    _result_str=""
-    _remaining_input="$_input_str_to_strip"
-
-    while [ -n "$_remaining_input" ]; do
-        case "$_remaining_input" in
-            "$_LIB_MSG_ESC"*)
-                # Handle escape sequence
-                _after_esc="${_remaining_input#"$_LIB_MSG_ESC"}"
-                if [ "${_after_esc%"${_after_esc#?}"}" = "[" ]; then
-                    # This is potentially a CSI sequence
-                    _sequence_part="${_after_esc#?}"
-                    _params_and_cmd="$_sequence_part"
-                    _cmd_char=""
-                    _loop_idx=0
-                    _max_loop_idx=${#_params_and_cmd}
-                    _found_valid_sequence=false
-
-                    # Scan for the command character
-                    while [ "$_loop_idx" -lt "$_max_loop_idx" ]; do
-                        _temp_str_for_char="$_params_and_cmd"
-                        _char_idx_iter=0
-                        while [ "$_char_idx_iter" -lt "$_loop_idx" ]; do
-                            _temp_str_for_char="${_temp_str_for_char#?}"
-                            _char_idx_iter=$((_char_idx_iter + 1))
+    # Optimized implementation that avoids character-by-character processing
+    _input="$1"
+    _result=""
+    
+    # Process the input in chunks, splitting on escape character
+    while [ -n "$_input" ]; do
+        # Check if the input contains an escape character
+        case "$_input" in
+            *"$_LIB_MSG_ESC"*)
+                # Extract the part before the escape character
+                _before_esc="${_input%%"$_LIB_MSG_ESC"*}"
+                _result="${_result}${_before_esc}"
+                
+                # Remove the processed part from input
+                _input="${_input#*"$_LIB_MSG_ESC"}"
+                
+                # Check if this is a CSI sequence (ESC[...)
+                case "$_input" in
+                    "["*)
+                        # This is a CSI sequence
+                        _input="${_input#[}"
+                        
+                        # Find the end of the sequence (first letter)
+                        _seq_end=""
+                        _remaining=""
+                        
+                        # Extract everything up to the first letter (command char)
+                        _i=0
+                        _found_cmd=0
+                        while [ "$_i" -lt "${#_input}" ] && [ "$_found_cmd" -eq 0 ]; do
+                            _char="${_input:$_i:1}"
+                            case "$_char" in
+                                [a-zA-Z])
+                                    # Found command character
+                                    _found_cmd=1
+                                    _remaining="${_input#"${_input:0:$((_i + 1))}"}"
+                                    ;;
+                                [0-9\;:])
+                                    # Valid parameter character, continue
+                                    _i=$((_i + 1))
+                                    ;;
+                                *)
+                                    # Invalid character, break and treat as literal
+                                    _found_cmd=2
+                                    ;;
+                            esac
                         done
-                        _current_param_char="${_temp_str_for_char%"${_temp_str_for_char#?}"}"
-
-                        case "$_current_param_char" in
-                            [0-9\;:])
-                                # Valid parameter character, keep scanning
-                                ;;
-                            [a-zA-Z])
-                                # Found valid command character, this is a complete sequence
-                                _cmd_char="$_current_param_char"
-                                _temp_str_for_remainder="$_params_and_cmd"
-                                _remainder_idx_iter=0
-                                _num_chars_to_chop=$((_loop_idx + 1))
-                                while [ "$_remainder_idx_iter" -lt "$_num_chars_to_chop" ]; do
-                                    _temp_str_for_remainder="${_temp_str_for_remainder#?}"
-                                    _remainder_idx_iter=$((_remainder_idx_iter + 1))
-                                done
-                                _remaining_input="$_temp_str_for_remainder"
-                                _found_valid_sequence=true
-                                break
-                                ;;
-                            *)
-                                # Invalid character for CSI, treat whole sequence as literal
-                                _cmd_char=""
-                                break
-                                ;;
-                        esac
-                        _loop_idx=$((_loop_idx + 1))
-                    done
-
-                    # If we found a valid sequence, skip it (strip it)
-                    if $_found_valid_sequence; then
-                        continue
-                    fi
-
-                    # If we didn't find a command char, this is an incomplete sequence
-                    # We need to preserve it literally including ESC and [
-                    _result_str="${_result_str}${_LIB_MSG_ESC}["
-                    _remaining_input="$_sequence_part"
-                else
-                    # ESC followed by something other than [
-                    # Preserve it literally
-                    _result_str="${_result_str}${_LIB_MSG_ESC}"
-                    _remaining_input="$_after_esc"
-                fi
+                        
+                        if [ "$_found_cmd" -eq 1 ]; then
+                            # Valid ANSI sequence found and removed
+                            _input="$_remaining"
+                        elif [ "$_found_cmd" -eq 2 ]; then
+                            # Invalid sequence, preserve the ESC[ literally
+                            _result="${_result}${_LIB_MSG_ESC}["
+                        else
+                            # Reached end without finding command char
+                            # Preserve the ESC[ literally
+                            _result="${_result}${_LIB_MSG_ESC}["
+                            _input=""
+                        fi
+                        ;;
+                    *)
+                        # Not a CSI sequence, preserve the escape character
+                        _result="${_result}${_LIB_MSG_ESC}"
+                        ;;
+                esac
                 ;;
             *)
-                _char_to_add="${_remaining_input%"${_remaining_input#?}"}"
-                _result_str="${_result_str}${_char_to_add}"
-                _remaining_input="${_remaining_input#?}"
+                # No more escape characters, add the rest and exit
+                _result="${_result}${_input}"
+                _input=""
                 ;;
         esac
     done
-    printf '%s' "$_result_str"
+    
+    printf '%s' "$_result"
 }
 
 # Optimized sed implementation for stripping ANSI escape sequences
@@ -488,114 +485,6 @@ _lib_msg_wrap_text_sh() {
     printf "%s" "$_result_lines"
 }
 
-# AWK implementation for wrapping text (optimized)
-# Uses $_LIB_MSG_RS (record separator) to delimit lines
-_lib_msg_wrap_text_awk() {
-    _text_to_wrap="$1"
-    _max_width="$2"
-
-    if [ -z "$_text_to_wrap" ]; then # Handle empty string special case
-        # Return empty string
-        printf "%s" ""
-        return
-    fi
-
-    if [ "$_max_width" -le 0 ]; then # No wrapping if width is 0 or less
-        printf "%s" "$_text_to_wrap"
-        return
-    fi
-
-    # First convert newlines to spaces for consistent behavior with shell implementation
-    _text_to_wrap_nl_normalized="$(_lib_msg_tr_newline_to_space "$_text_to_wrap")"
-
-    _result=$(printf '%s' "$_text_to_wrap_nl_normalized" | awk -v max_width="$_max_width" -v rs="$(printf '\036')" '
-    BEGIN {
-        result = "";
-        current_line = "";
-        first_word = 1;
-        line_count = 0;
-    }
-
-    function add_line(line) {
-        if (result == "")
-            result = line;
-        else
-            result = result rs line;
-        line_count++;
-    }
-
-    function process_long_word(word) {
-        while (length(word) > max_width) {
-            chunk = substr(word, 1, max_width);
-            add_line(chunk);
-            word = substr(word, max_width + 1);
-        }
-        return word;
-    }
-
-    {
-        if ($0 == "") {
-            add_line("");
-            next;
-        }
-
-        # Preserve exactly one space between words, but not leading/trailing spaces
-        gsub(/^[ \t]+/, "");    # Remove leading spaces
-        gsub(/[ \t]+$/, "");    # Remove trailing spaces
-        gsub(/[ \t]+/, " ");    # Normalize multiple spaces to single space
-
-        # Split by spaces for word processing
-        split($0, words, " ");
-        for (i = 1; i <= length(words); i++) {
-            word = words[i];
-            word_len = length(word);
-
-            if (word_len == 0) continue;
-
-            if (first_word) {
-                if (word_len > max_width) {
-                    remainder = process_long_word(word);
-                    if (remainder != "") {
-                        current_line = remainder;
-                        first_word = 0;
-                    }
-                } else {
-                    current_line = word;
-                    first_word = 0;
-                }
-            } else if (length(current_line) + 1 + word_len <= max_width) {
-                current_line = current_line " " word;
-            } else {
-                add_line(current_line);
-
-                if (word_len > max_width) {
-                    remainder = process_long_word(word);
-                    if (remainder != "") {
-                        current_line = remainder;
-                        first_word = 0;
-                    } else {
-                        current_line = "";
-                        first_word = 1;
-                    }
-                } else {
-                    current_line = word;
-                    first_word = 0;
-                }
-            }
-        }
-
-        if (current_line != "" || !first_word) {
-            add_line(current_line);
-        }
-    }
-
-    END {
-        # Output the result directly
-        printf("%s", result);
-    }')
-
-    printf "%s" "$_result"
-}
 
 # Pure shell implementation to replace tr for newline to space conversion
 _lib_msg_tr_newline_to_space_shell() {
@@ -660,7 +549,7 @@ _lib_msg_tr_remove_whitespace() {
     fi
 }
 
-# This function selects the best available text wrapping implementation
+# This function performs text wrapping
 # and returns the result as an RS-delimited string.
 _lib_msg_wrap_text() {
     _text_to_wrap="$1"
@@ -686,22 +575,8 @@ _lib_msg_wrap_text() {
         return
     fi
     
-    # Select the best implementation for text wrapping
-    if [ -n "$_LIB_MSG_FORCE_TEXT_WRAP_IMPL" ]; then
-        # Implementation forced via environment variable (for testing)
-        if [ "$_LIB_MSG_FORCE_TEXT_WRAP_IMPL" = "sh" ]; then
-            _result=$(_lib_msg_wrap_text_sh "$_text_to_wrap" "$_max_width")
-        else
-            _result=$(_lib_msg_wrap_text_awk "$_text_to_wrap" "$_max_width")
-        fi
-    # Check command availability each time for proper stubbing support in tests
-    elif _lib_msg_has_command awk; then
-        # Use optimized awk implementation if available
-        _result=$(_lib_msg_wrap_text_awk "$_text_to_wrap" "$_max_width")
-    else
-        # Fall back to pure shell implementation
-        _result=$(_lib_msg_wrap_text_sh "$_text_to_wrap" "$_max_width")
-    fi
+    # Use the pure shell implementation (for optimal performance)
+    _result=$(_lib_msg_wrap_text_sh "$_text_to_wrap" "$_max_width")
     
     # Return the RS-delimited string
     printf "%s" "$_result"

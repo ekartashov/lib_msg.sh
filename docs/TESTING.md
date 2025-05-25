@@ -58,7 +58,7 @@ bats $(find test -name "[0-9][0-9]_*.bats" | grep -v "13_performance_tests.bats"
 
 The performance tests (test #13) compare different implementations:
 - ANSI stripping (shell vs sed)
-- Text wrapping (shell vs awk)
+- Text wrapping (pure shell implementation)
 - Newline conversion (shell vs tr command)
 - Whitespace removal (shell vs tr command)
 - End-to-end message processing
@@ -80,10 +80,10 @@ Performance tests reveal several important insights about the different implemen
   - With large inputs (5000 chars), sed is ~2240x faster than shell
 
 ### Text Wrapping Performance
-- **Shell vs. AWK Implementation**:
-  - Shell implementation performs as well as or better than AWK
-  - For large inputs, shell implementation is actually faster than AWK
-  - This is an exception to the general rule that external commands outperform shell
+- **Pure Shell Implementation**:
+  - Performance testing showed the shell implementation is efficient for text wrapping
+  - This was an exception to the general rule that external commands outperform shell
+  - Due to this finding, we exclusively use the shell implementation for text wrapping
 
 ### String Transformations (Newline Conversion, Whitespace Removal)
 - **Shell vs. tr Command**:

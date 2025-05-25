@@ -106,6 +106,62 @@ _LIB_MSG_CLR_CYAN=""
 _LIB_MSG_CLR_WHITE=""
 _LIB_MSG_CLR_BOLD=""
 
+# SGR (Select Graphic Rendition) code constants for public API
+# These are exported to allow users to build custom style sequences
+# Format/Style codes
+export _LIB_MSG_SGR_RESET="0"      # Reset all styles
+export _LIB_MSG_SGR_BOLD="1"       # Bold/increased intensity
+export _LIB_MSG_SGR_FAINT="2"      # Faint/decreased intensity
+export _LIB_MSG_SGR_ITALIC="3"     # Italic
+export _LIB_MSG_SGR_UNDERLINE="4"  # Underline
+export _LIB_MSG_SGR_BLINK="5"      # Slow blink
+export _LIB_MSG_SGR_INVERT="7"     # Invert foreground/background
+export _LIB_MSG_SGR_HIDE="8"       # Conceal/hide text
+export _LIB_MSG_SGR_STRIKE="9"     # Strikethrough
+
+# Foreground color codes (normal intensity)
+export _LIB_MSG_SGR_FG_BLACK="30"
+export _LIB_MSG_SGR_FG_RED="31"
+export _LIB_MSG_SGR_FG_GREEN="32"
+export _LIB_MSG_SGR_FG_YELLOW="33"
+export _LIB_MSG_SGR_FG_BLUE="34"
+export _LIB_MSG_SGR_FG_MAGENTA="35"
+export _LIB_MSG_SGR_FG_CYAN="36"
+export _LIB_MSG_SGR_FG_WHITE="37"
+
+# Foreground color codes (bright intensity)
+export _LIB_MSG_SGR_FG_BRIGHT_BLACK="90"
+export _LIB_MSG_SGR_FG_BRIGHT_RED="91"
+export _LIB_MSG_SGR_FG_BRIGHT_GREEN="92"
+export _LIB_MSG_SGR_FG_BRIGHT_YELLOW="93"
+export _LIB_MSG_SGR_FG_BRIGHT_BLUE="94"
+export _LIB_MSG_SGR_FG_BRIGHT_MAGENTA="95"
+export _LIB_MSG_SGR_FG_BRIGHT_CYAN="96"
+export _LIB_MSG_SGR_FG_BRIGHT_WHITE="97"
+
+# Background color codes (normal intensity)
+export _LIB_MSG_SGR_BG_BLACK="40"
+export _LIB_MSG_SGR_BG_RED="41"
+export _LIB_MSG_SGR_BG_GREEN="42"
+export _LIB_MSG_SGR_BG_YELLOW="43"
+export _LIB_MSG_SGR_BG_BLUE="44"
+export _LIB_MSG_SGR_BG_MAGENTA="45"
+export _LIB_MSG_SGR_BG_CYAN="46"
+export _LIB_MSG_SGR_BG_WHITE="47"
+
+# Background color codes (bright intensity)
+export _LIB_MSG_SGR_BG_BRIGHT_BLACK="100"
+export _LIB_MSG_SGR_BG_BRIGHT_RED="101"
+export _LIB_MSG_SGR_BG_BRIGHT_GREEN="102"
+export _LIB_MSG_SGR_BG_BRIGHT_YELLOW="103"
+export _LIB_MSG_SGR_BG_BRIGHT_BLUE="104"
+export _LIB_MSG_SGR_BG_BRIGHT_MAGENTA="105"
+export _LIB_MSG_SGR_BG_BRIGHT_CYAN="106"
+export _LIB_MSG_SGR_BG_BRIGHT_WHITE="107"
+
+# Internal state for color configuration
+_LIB_MSG_COLORS_ENABLED="false"
+
 # Special characters for internal use
 _LIB_MSG_NL='
 '
@@ -125,8 +181,44 @@ _lib_msg_init_colors() {
     _LIB_MSG_CLR_WHITE=""
     _LIB_MSG_CLR_BOLD=""
     
-    # Only set color codes if at least one output stream is a TTY
-    if [ "$_LIB_MSG_STDOUT_IS_TTY" = "true" ] || [ "$_LIB_MSG_STDERR_IS_TTY" = "true" ]; then
+    # Default: colors disabled
+    _LIB_MSG_COLORS_ENABLED="false"
+    
+    # First determine if we *should* enable colors according to policy
+    # Get color mode configuration
+    _color_mode="${LIB_MSG_COLOR_MODE:-auto}"
+    
+    # Check NO_COLOR (standard env var that disables colors when set)
+    # Unless color mode is 'force_on', NO_COLOR takes precedence when set
+    if [ -n "${NO_COLOR+x}" ] && [ "$_color_mode" != "force_on" ]; then
+        # NO_COLOR is set, colors are definitely OFF
+        return
+    fi
+    
+    # Check specific color mode values
+    case "$_color_mode" in
+        off)
+            # Colors explicitly disabled
+            return
+            ;;
+        force_on)
+            # Attempt to enable colors, ignoring NO_COLOR
+            # Still respect TTY check and TERM=dumb check below
+            ;;
+        on|auto|*)
+            # 'on', 'auto', or any unrecognized value: default behavior
+            # NO_COLOR check was already done above
+            ;;
+    esac
+    
+    # Next, check if any stream is actually a TTY and TERM isn't "dumb"
+    # Only enable colors if at least one output stream is a TTY
+    if { [ "$_LIB_MSG_STDOUT_IS_TTY" = "true" ] || [ "$_LIB_MSG_STDERR_IS_TTY" = "true" ]; } && \
+       [ "${TERM:-}" != "dumb" ]; then
+        # TTY detected and TERM is not "dumb"
+        _LIB_MSG_COLORS_ENABLED="true"
+        
+        # Initialize color escape sequences
         _LIB_MSG_CLR_RESET=$(printf '\033[0m')
         _LIB_MSG_CLR_BLACK=$(printf '\033[0;30m')
         _LIB_MSG_CLR_RED=$(printf '\033[0;31m')
@@ -833,4 +925,410 @@ info() {
 infon() {
     _prefix_tag=$(_lib_msg_colorize "I: " "$_LIB_MSG_CLR_BLUE" "$_LIB_MSG_STDOUT_IS_TTY")
     _print_msg_core "$1" "${SCRIPT_NAME:-lib_msg.sh}: ${_prefix_tag}" "" "true"
+}
+
+# ========================================================================
+# --- Public API Functions for TTY State and Terminal Width ---
+# ========================================================================
+
+# Check if stdout is a TTY
+# Returns: "true" or "false" string
+lib_msg_stdout_is_tty() {
+    printf "%s" "$_LIB_MSG_STDOUT_IS_TTY"
+}
+
+# Check if stderr is a TTY
+# Returns: "true" or "false" string
+lib_msg_stderr_is_tty() {
+    printf "%s" "$_LIB_MSG_STDERR_IS_TTY"
+}
+
+# Get current terminal width (0 if not a TTY or width unknown)
+# Returns: integer width in columns
+lib_msg_get_terminal_width() {
+    printf "%s" "$_LIB_MSG_TERMINAL_WIDTH"
+}
+
+# Force update terminal width from current COLUMNS value
+# Returns: updated terminal width
+lib_msg_update_terminal_width() {
+    _lib_msg_update_terminal_width
+    printf "%s" "$_LIB_MSG_TERMINAL_WIDTH"
+}
+
+# ========================================================================
+# --- Public API Functions for Color Support ---
+# ========================================================================
+
+# Check if colors are enabled
+# Returns: "true" or "false" string
+lib_msg_colors_enabled() {
+    printf "%s" "$_LIB_MSG_COLORS_ENABLED"
+}
+
+# Redetect color support based on current environment
+# Returns: "true" if colors now enabled, "false" otherwise
+lib_msg_reinit_colors() {
+    _lib_msg_init_colors
+    printf "%s" "$_LIB_MSG_COLORS_ENABLED"
+}
+
+# ========================================================================
+# --- Public API Functions for Text Styling ---
+# ========================================================================
+
+# Build an ANSI style sequence from SGR codes
+# Args: list of SGR codes, separated by spaces
+# Returns: Complete ANSI escape sequence or empty string if colors disabled
+lib_msg_build_style_sequence() {
+    if [ "$_LIB_MSG_COLORS_ENABLED" != "true" ]; then
+        # Colors disabled, return empty string
+        return
+    fi
+
+    _sgr_codes="$*"
+    if [ -z "$_sgr_codes" ]; then
+        # No codes provided, use reset
+        _sgr_codes="$_LIB_MSG_SGR_RESET"
+    fi
+
+    # Convert space-separated list to semicolon-separated for SGR
+    _sgr_param=$(printf '%s' "$_sgr_codes" | tr ' ' ';')
+    
+    # Return the complete escape sequence
+    printf '\033[%sm' "$_sgr_param"
+}
+
+# Apply styling to text if colors are enabled
+# Args: $1 = text, $2 = style sequence (from lib_msg_build_style_sequence)
+# Returns: styled text if colors enabled, original text otherwise
+lib_msg_apply_style() {
+    _text="$1"
+    _style="$2"
+    
+    if [ "$_LIB_MSG_COLORS_ENABLED" = "true" ] && [ -n "$_style" ]; then
+        printf '%s%s%s' "$_style" "$_text" "$_LIB_MSG_CLR_RESET"
+    else
+        printf '%s' "$_text"
+    fi
+}
+
+# Apply styling to text if output stream is a TTY
+# Args: $1 = text, $2 = style sequence, $3 = "true" for stderr, anything else for stdout
+# Returns: styled text if appropriate stream is TTY, original text otherwise
+lib_msg_apply_style_if_tty() {
+    _text="$1"
+    _style="$2"
+    _use_stderr="$3"
+    
+    _is_tty="$_LIB_MSG_STDOUT_IS_TTY"
+    if [ "$_use_stderr" = "true" ]; then
+        _is_tty="$_LIB_MSG_STDERR_IS_TTY"
+    fi
+    
+    if [ "$_is_tty" = "true" ] && [ "$_LIB_MSG_COLORS_ENABLED" = "true" ] && [ -n "$_style" ]; then
+        printf '%s%s%s' "$_style" "$_text" "$_LIB_MSG_CLR_RESET"
+    else
+        printf '%s' "$_text"
+    fi
+}
+
+# ========================================================================
+# --- Public API Functions for Text Processing ---
+# ========================================================================
+
+# Strip ANSI escape sequences from text
+# Args: $1 = text with ANSI sequences
+# Returns: text without any ANSI sequences
+lib_msg_strip_ansi() {
+    _lib_msg_strip_ansi "$1"
+}
+
+# Wrap text to specified width using newlines, respecting terminal width if width=0
+# Args: $1 = text to wrap, $2 = max width (0 for terminal width)
+# Returns: wrapped text with newlines
+lib_msg_get_wrapped_text() {
+    _text="$1"
+    _width="$2"
+    
+    # Handle case where caller wants to use terminal width
+    if [ "$_width" -eq 0 ]; then
+        _width="$_LIB_MSG_TERMINAL_WIDTH"
+        # If terminal width is still 0, don't wrap
+        if [ "$_width" -eq 0 ]; then
+            printf '%s' "$_text"
+            return
+        fi
+    fi
+    
+    # Get wrapped text as RS-delimited string
+    _wrapped_text=$(_lib_msg_wrap_text "$_text" "$_width")
+    
+    # Convert RS to newlines for public API
+    if [ -z "$_wrapped_text" ]; then
+        printf '%s' "$_text"
+        return
+    fi
+    
+    # Replace RS with newlines
+    _remaining="$_wrapped_text"
+    _result=""
+    _first=true
+    
+    while [ -n "$_remaining" ]; do
+        case "$_remaining" in
+            *"$_LIB_MSG_RS"*)
+                _current="${_remaining%%"$_LIB_MSG_RS"*}"
+                _remaining="${_remaining#*"$_LIB_MSG_RS"}"
+                ;;
+            *)
+                _current="$_remaining"
+                _remaining=""
+                ;;
+        esac
+        
+        if $_first; then
+            _result="$_current"
+            _first=false
+        else
+            _result="${_result}${_LIB_MSG_NL}${_current}"
+        fi
+    done
+    
+    printf '%s' "$_result"
+}
+
+# ========================================================================
+# --- Public API Functions for Custom Message Output ---
+# ========================================================================
+
+# Output a message with optional prefix, styled based on TTY
+# Args: $1 = message, $2 = prefix (optional), $3 = style (optional), $4 = "true" for stderr (optional)
+# Returns: nothing
+lib_msg_output() {
+    _message="$1"
+    _prefix="${2:-}"
+    _style="${3:-}"
+    _use_stderr="${4:-false}"
+    _no_newline="${5:-false}"
+    
+    # Apply style to prefix if needed
+    if [ -n "$_prefix" ] && [ -n "$_style" ]; then
+        _prefix="$(lib_msg_apply_style_if_tty "$_prefix" "$_style" "$_use_stderr")"
+    fi
+    
+    # Determine stream
+    _is_tty="$_LIB_MSG_STDOUT_IS_TTY"
+    if [ "$_use_stderr" = "true" ]; then
+        _is_tty="$_LIB_MSG_STDERR_IS_TTY"
+    fi
+    
+    # Call the core print function
+    _print_msg_core "$_message" "$_prefix" "$_use_stderr" "$_no_newline"
+}
+
+# Output a message to stdout/stderr with NO newline
+# Args: same as lib_msg_output
+# Returns: nothing
+lib_msg_output_n() {
+    lib_msg_output "$1" "${2:-}" "${3:-}" "${4:-false}" "true"
+}
+
+# ========================================================================
+# --- Public API Functions for Prompts ---
+# ========================================================================
+
+# Display a prompt and read user input
+# Args: $1 = prompt text, $2 = default value (optional), $3 = prompt style (optional)
+# Returns: user input (echoes to stdout)
+lib_msg_prompt() {
+    _prompt_text="$1"
+    _default_val="${2:-}"
+    _prompt_style="${3:-}"
+    
+    # Prepare the complete prompt text
+    if [ -n "$_default_val" ]; then
+        _display_text="$_prompt_text [$_default_val]: "
+    else
+        _display_text="$_prompt_text: "
+    fi
+    
+    # Display prompt with styling but no newline
+    lib_msg_output_n "$_display_text" "" "$_prompt_style" "false"
+    
+    # Read user input
+    read -r _user_input
+    
+    # Return default if user input is empty
+    if [ -z "$_user_input" ] && [ -n "$_default_val" ]; then
+        printf "%s" "$_default_val"
+    else
+        printf "%s" "$_user_input"
+    fi
+}
+
+# Display a yes/no prompt and return the result
+# Args: $1 = prompt text, $2 = default (y/n, optional), $3 = prompt style (optional)
+# Returns: "true" for yes, "false" for no
+lib_msg_prompt_yn() {
+    _prompt_text="$1"
+    _default="${2:-}"
+    _prompt_style="${3:-}"
+    
+    # Normalize default to lowercase
+    case "$_default" in
+        [Yy]|[Yy][Ee][Ss]) _default="y" ;;
+        [Nn]|[Nn][Oo]) _default="n" ;;
+        *) _default="" ;;
+    esac
+    
+    # Simplified implementation - directly ask for y/n
+    if [ "$_default" = "y" ]; then
+        printf "%s [Y/n]: " "$_prompt_text"
+    elif [ "$_default" = "n" ]; then
+        printf "%s [y/N]: " "$_prompt_text"
+    else
+        printf "%s [y/n]: " "$_prompt_text"
+    fi
+    
+    # Read input directly
+    read -r _answer
+    
+    # Convert to lowercase and trim
+    _answer=$(printf "%s" "$_answer" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+    
+    # Handle empty input with default
+    if [ -z "$_answer" ] && [ -n "$_default" ]; then
+        _answer="$_default"
+    fi
+    
+    # Check input
+    case "$_answer" in
+        y|yes|true|1)
+            printf "true"
+            ;;
+        n|no|false|0)
+            printf "false"
+            ;;
+        *)
+            # Invalid input, default to false
+            printf "false"
+            ;;
+    esac
+}
+
+# ========================================================================
+# --- Public API Convenience Functions ---
+# ========================================================================
+
+# Get a predefined style sequence for common styles
+# Args: $1 = style name (error, warning, info, success, highlight, dim)
+# Returns: ANSI style sequence
+lib_msg_get_style() {
+    _style_name="$1"
+    
+    case "$_style_name" in
+        error)
+            # Bold red
+            lib_msg_build_style_sequence "$_LIB_MSG_SGR_BOLD" "$_LIB_MSG_SGR_FG_RED"
+            ;;
+        warning)
+            # Bold yellow
+            lib_msg_build_style_sequence "$_LIB_MSG_SGR_BOLD" "$_LIB_MSG_SGR_FG_YELLOW"
+            ;;
+        info)
+            # Bold blue
+            lib_msg_build_style_sequence "$_LIB_MSG_SGR_BOLD" "$_LIB_MSG_SGR_FG_BLUE"
+            ;;
+        success)
+            # Bold green
+            lib_msg_build_style_sequence "$_LIB_MSG_SGR_BOLD" "$_LIB_MSG_SGR_FG_GREEN"
+            ;;
+        highlight)
+            # Bold cyan
+            lib_msg_build_style_sequence "$_LIB_MSG_SGR_BOLD" "$_LIB_MSG_SGR_FG_CYAN"
+            ;;
+        dim)
+            # Faint white
+            lib_msg_build_style_sequence "$_LIB_MSG_SGR_FAINT" "$_LIB_MSG_SGR_FG_WHITE"
+            ;;
+        *)
+            # Empty string for unknown style
+            printf ""
+            ;;
+    esac
+}
+
+# Create a prefix with a tag, e.g. "[TAG] "
+# Args: $1 = tag text, $2 = style (optional), $3 = bracket style (optional)
+# Returns: formatted prefix string with styling if enabled
+lib_msg_create_prefix() {
+    _tag="$1"
+    _tag_style="${2:-}"
+    _bracket_style="${3:-}"
+    
+    if [ -z "$_tag" ]; then
+        # Empty tag, return empty prefix
+        return
+    fi
+    
+    if [ -n "$_bracket_style" ]; then
+        _left_bracket=$(lib_msg_apply_style "[" "$_bracket_style")
+        _right_bracket=$(lib_msg_apply_style "]" "$_bracket_style")
+    else
+        _left_bracket="["
+        _right_bracket="]"
+    fi
+    
+    if [ -n "$_tag_style" ]; then
+        _styled_tag=$(lib_msg_apply_style "$_tag" "$_tag_style")
+    else
+        _styled_tag="$_tag"
+    fi
+    
+    printf '%s%s%s ' "$_left_bracket" "$_styled_tag" "$_right_bracket"
+}
+
+# Generate a progress bar
+# Args: $1 = current value, $2 = max value, $3 = width (default 20), $4 = filled char (default #), $5 = empty char (default -)
+# Returns: text progress bar
+lib_msg_progress_bar() {
+    _current="$1"
+    _max="$2"
+    _width="${3:-20}"
+    _filled_char="${4:-#}"
+    _empty_char="${5:--}"
+    
+    # Validate inputs
+    if [ "$_current" -lt 0 ]; then _current=0; fi
+    if [ "$_max" -le 0 ]; then _max=1; fi
+    if [ "$_current" -gt "$_max" ]; then _current="$_max"; fi
+    if [ "$_width" -le 0 ]; then _width=20; fi
+    
+    # Calculate filled portion
+    _filled_count=$(( _current * _width / _max ))
+    _empty_count=$(( _width - _filled_count ))
+    
+    # Generate progress bar
+    _progress=""
+    
+    # Add filled portion
+    _i=0
+    while [ "$_i" -lt "$_filled_count" ]; do
+        _progress="${_progress}${_filled_char}"
+        _i=$(( _i + 1 ))
+    done
+    
+    # Add empty portion
+    _i=0
+    while [ "$_i" -lt "$_empty_count" ]; do
+        _progress="${_progress}${_empty_char}"
+        _i=$(( _i + 1 ))
+    done
+    
+    # Calculate percentage
+    _percent=$(( _current * 100 / _max ))
+    
+    # Return formatted progress bar
+    printf "[%s] %d%%" "$_progress" "$_percent"
 }

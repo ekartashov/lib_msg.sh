@@ -8,27 +8,24 @@ This document provides detailed instructions for installing and incorporating th
 - [Installation Methods](#installation-methods)
   - [Direct Download](#direct-download)
   - [Git Clone](#git-clone)
-  - [Package Installation](#package-installation)
+  - [Manual Integration](#manual-integration)
 - [Integration Methods](#integration-methods)
   - [Direct Source](#direct-source)
   - [Submodule Integration](#submodule-integration)
   - [Copy Integration](#copy-integration)
-- [System-specific Notes](#system-specific-notes)
+- [Shell Compatibility](#shell-compatibility)
 - [Configuration](#configuration)
 - [Validation](#validation)
+- [Advanced Installation](#advanced-installation)
+- [Uninstallation](#uninstallation)
 
 ## Prerequisites
 
-`lib_msg.sh` is designed to be lightweight and dependency-free. The minimum requirements are:
+`lib_msg.sh` is designed to be lightweight and dependency-free. The only requirement is the shell itself:
 
 - A POSIX-compliant shell (sh, bash, dash, ksh, zsh, etc.)
-- Basic POSIX utilities (found on virtually all Unix-like systems)
 
-**Optional dependencies** (for enhanced functionality):
-- `sed` - For improved ANSI escape sequence handling
-- `tr` - For faster string transformations
-
-Without these optional commands, the library will automatically fall back to pure shell implementations.
+The library uses pure shell implementations for all functionality, making it suitable for even the most minimal environments.
 
 ## Installation Methods
 
@@ -59,21 +56,17 @@ git clone https://github.com/ekartashov/lib_msg.sh.git
 cp lib_msg.sh/lib_msg.sh ~/lib/
 ```
 
-### Package Installation
+### Manual Integration
 
-The library might be available through package managers on some systems:
+For simple standalone scripts or utilities:
 
-**For systems using Homebrew:**
 ```sh
-brew install lib_msg
+# Download the library directly to your project directory
+curl -o lib_msg.sh https://raw.githubusercontent.com/ekartashov/lib_msg.sh/main/lib_msg.sh
 ```
 
-**Using npm for cross-platform installation:**
-```sh
-npm install -g lib-msg-sh
-```
 
-(Note: Package availability depends on distribution in specific package managers)
+(Note: This library is not currently available through package managers)
 
 ## Integration Methods
 
@@ -141,30 +134,29 @@ else
 fi
 ```
 
-## System-specific Notes
+## Shell Compatibility
 
-### macOS
+### Shell Support
 
-On macOS, some POSIX utilities might behave differently. For best results:
+This library is designed for POSIX-compliant shells. It has been tested with:
+- bash (version 3.2+)
+- dash
+- ksh
+- zsh (in sh emulation mode)
 
-```sh
-# Install GNU versions of core utilities
-brew install coreutils gnu-sed
+No shell-specific features are required, as the library uses only standard POSIX shell constructs.
 
-# Then update your PATH to use GNU versions first
-export PATH="/usr/local/opt/coreutils/libexec/gnubin:$PATH"
-export PATH="/usr/local/opt/gnu-sed/libexec/gnubin:$PATH"
-```
+### Platform Notes
 
-### Minimal Environments (Embedded Systems, Containers)
+The library is designed to work on any POSIX-compliant system, including:
+- Linux (all distributions)
+- macOS
+- FreeBSD, OpenBSD, and other BSD variants
+- Embedded Linux systems
+- MinGW/MSYS2 and Git Bash on Windows
 
-For very minimal environments:
+For optimal performance, the library will use external commands like `sed` and `tr` when available, but will fall back to pure shell implementations when these commands are not present.
 
-```sh
-# Check if required commands are available
-command -v sed >/dev/null 2>&1 || echo "Warning: sed not found, performance will be reduced"
-command -v tr >/dev/null 2>&1 || echo "Warning: tr not found, performance will be reduced"
-```
 
 ## Configuration
 

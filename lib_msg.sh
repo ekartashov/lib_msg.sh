@@ -833,8 +833,31 @@ lib_msg_build_style_sequence() {
         _sgr_codes="$_LIB_MSG_SGR_RESET"
     fi
 
-    # Convert space-separated list to semicolon-separated for SGR
-    _sgr_param=$(printf '%s' "$_sgr_codes" | tr ' ' ';')
+    # Convert space-separated list to semicolon-separated for SGR using pure shell
+    _sgr_param=""
+    _remaining="$_sgr_codes"
+    _first=true
+    
+    # Process space-separated codes using parameter expansion
+    while [ -n "$_remaining" ]; do
+        case "$_remaining" in
+            *" "*)
+                _current="${_remaining%% *}"
+                _remaining="${_remaining#* }"
+                ;;
+            *)
+                _current="$_remaining"
+                _remaining=""
+                ;;
+        esac
+        
+        if $_first; then
+            _sgr_param="$_current"
+            _first=false
+        else
+            _sgr_param="${_sgr_param};${_current}"
+        fi
+    done
     
     # Return the complete escape sequence
     printf '\033[%sm' "$_sgr_param"
@@ -1035,8 +1058,39 @@ lib_msg_prompt_yn() {
     # Read input directly
     read -r _answer
     
-    # Convert to lowercase and trim
-    _answer=$(printf "%s" "$_answer" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+    # Convert to lowercase and trim using pure shell
+    _answer=$(printf "%s" "$_answer")
+    
+    # Convert to lowercase using parameter expansion
+    _lower_answer=""
+    _i=0
+    while [ $_i -lt ${#_answer} ]; do
+        _char="${_answer:$_i:1}"
+        case "$_char" in
+            [A-Z])
+                # Convert uppercase to lowercase using case statement
+                case "$_char" in
+                    A) _char="a" ;; B) _char="b" ;; C) _char="c" ;; D) _char="d" ;;
+                    E) _char="e" ;; F) _char="f" ;; G) _char="g" ;; H) _char="h" ;;
+                    I) _char="i" ;; J) _char="j" ;; K) _char="k" ;; L) _char="l" ;;
+                    M) _char="m" ;; N) _char="n" ;; O) _char="o" ;; P) _char="p" ;;
+                    Q) _char="q" ;; R) _char="r" ;; S) _char="s" ;; T) _char="t" ;;
+                    U) _char="u" ;; V) _char="v" ;; W) _char="w" ;; X) _char="x" ;;
+                    Y) _char="y" ;; Z) _char="z" ;;
+                esac
+                ;;
+        esac
+        
+        # Skip whitespace characters entirely
+        case "$_char" in
+            [[:space:]]) : ;; # Skip whitespace
+            *) _lower_answer="${_lower_answer}${_char}" ;;
+        esac
+        
+        _i=$((_i + 1))
+    done
+    
+    _answer="$_lower_answer"
     
     # Handle empty input with default
     if [ -z "$_answer" ] && [ -n "$_default" ]; then

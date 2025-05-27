@@ -1032,28 +1032,61 @@ lib_msg_prompt() {
 }
 
 # Display a yes/no prompt and return the result
-# Args: $1 = prompt text, $2 = default (y/n, optional), $3 = prompt style (optional)
+# Args: $1 = prompt text, $2 = prompt style (optional), $3 = default char (Y/y/N/n, mandatory)
 # Returns: "true" for yes, "false" for no
 lib_msg_prompt_yn() {
     _prompt_text="$1"
-    _default="${2:-}"
-    _prompt_style="${3:-}"
+    _prompt_style="${2:-}"
+    _default_char="$3"
     
-    # Normalize default to lowercase
-    case "$_default" in
-        [Yy]|[Yy][Ee][Ss]) _default="y" ;;
-        [Nn]|[Nn][Oo]) _default="n" ;;
-        *) _default="" ;;
+    # Validate that default_char is provided and valid
+    case "$_default_char" in
+        [YyNn]) : ;; # Valid input, continue
+        *)
+            # Invalid or missing default_char, show error and exit/return
+            err "lib_msg_prompt_yn: Third argument (default_char) is mandatory and must be Y, y, N, or n"
+            return 1
+            ;;
     esac
     
-    # Simplified implementation - directly ask for y/n
-    if [ "$_default" = "y" ]; then
-        printf "%s [Y/n]: " "$_prompt_text"
-    elif [ "$_default" = "n" ]; then
-        printf "%s [y/N]: " "$_prompt_text"
+    # Normalize default_char to determine actual default and display format
+    case "$_default_char" in
+        [Yy])
+            _default="y"
+            _display_format="[Y/n]"
+            ;;
+        [Nn])
+            _default="n"
+            _display_format="[y/N]"
+            ;;
+    esac
+    
+    # Create colored Q: prefix and apply style if specified
+    _prefix_tag=$(_lib_msg_colorize "Q: " "$_LIB_MSG_CLR_MAGENTA" "$_LIB_MSG_STDOUT_IS_TTY")
+    
+    # Apply prompt style to the entire prompt text if style is provided
+    if [ -n "$_prompt_style" ]; then
+        case "$_prompt_style" in
+            "bracketed")
+                # Bracketed style: wrap prompt text in brackets
+                _styled_prompt_text="[${_prompt_text}]"
+                ;;
+            "simple")
+                # Simple style: use prompt text as-is (no brackets)
+                _styled_prompt_text="$_prompt_text"
+                ;;
+            *)
+                # Default/unknown style: use prompt text as-is
+                _styled_prompt_text="$_prompt_text"
+                ;;
+        esac
     else
-        printf "%s [y/n]: " "$_prompt_text"
+        # No style specified, use prompt text as-is
+        _styled_prompt_text="$_prompt_text"
     fi
+    
+    # Format the complete prompt with script name prefix and new display format
+    printf "%s%s%s %s: " "${SCRIPT_NAME:-lib_msg.sh}: " "$_prefix_tag" "$_styled_prompt_text" "$_display_format"
     
     # Read input directly
     read -r _answer
@@ -1092,17 +1125,17 @@ lib_msg_prompt_yn() {
     
     _answer="$_lower_answer"
     
-    # Handle empty input with default
-    if [ -z "$_answer" ] && [ -n "$_default" ]; then
+    # Handle empty input with the mandatory default
+    if [ -z "$_answer" ]; then
         _answer="$_default"
     fi
     
     # Check input
     case "$_answer" in
-        y|yes|true|1)
+        y|yes)
             printf "true"
             ;;
-        n|no|false|0)
+        n|no)
             printf "false"
             ;;
         *)

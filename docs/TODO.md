@@ -11,3 +11,4 @@
 - [] Identify where the documentation is clear enough an correct it to be more concise (but don't overdo it)
 - [x] Revisit lib_msg.sh functions that use tr or any other non-shell intergrated commands --- we want to get rid of them and have only shell-only implementation
 - [] Reorganize tests so they are numbered correctly while letting performance tests be last (like set them to 50, so there's place for other test files to be added)
+- [] Update examples/public_api_demo.sh to use all the new functionality used in lib_msg.sh while updating the documentation to be coherent with the changes

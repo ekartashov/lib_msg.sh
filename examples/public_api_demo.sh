@@ -119,7 +119,7 @@ echo ""
 
 # Yes/No prompt
 echo "Yes/No prompt:"
-if lib_msg_prompt_yn "Would you like to continue?" "y"; then
+if [ "$(lib_msg_prompt_yn "Would you like to continue?" "y")" = "true" ]; then
     echo "You chose to continue!"
 else
     echo "You chose not to continue."
@@ -135,6 +135,27 @@ msg "This is a standard message"
 info "This is an information message"
 warn "This is a warning message"
 err "This is an error message"
+echo ""
+
+# ========================================================================
+# --- Additional Functions Demo ---
+# ========================================================================
+
+echo "== Additional Functions Demo =="
+msgn "This message has no newline"
+echo " (continued on same line)"
+
+infon "Information with no newline"
+echo " (continued on same line)"
+
+warnn "Warning with no newline" 
+echo " (continued on same line)"
+
+errn "Error with no newline"
+echo " (continued on same line)"
+
+echo "The die() function would terminate the script, so it's commented out:"
+echo "# die 2 \"This would exit with code 2\""
 echo ""
 
 echo "Demo completed successfully!"

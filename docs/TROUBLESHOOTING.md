@@ -1,336 +1,483 @@
 # Troubleshooting Guide for lib_msg.sh
 
-This document provides solutions for common issues you might encounter when using the lib_msg.sh library.
+This document provides solutions to common issues you might encounter when using the lib_msg.sh library.
 
 ## Table of Contents
 
 - [Display Issues](#display-issues)
-  - [Colors Not Displaying](#colors-not-displaying)
-  - [Text Not Wrapping Correctly](#text-not-wrapping-correctly)
-  - [Broken ANSI Sequences](#broken-ansi-sequences)
-- [Integration Issues](#integration-issues)
-  - [Script Name Not Showing Correctly](#script-name-not-showing-correctly)
-  - [Messages Appearing on Wrong Output Stream](#messages-appearing-on-wrong-output-stream)
-- [Performance Issues](#performance-issues)
-  - [Slow Output with Large Messages](#slow-output-with-large-messages)
-  - [High CPU Usage](#high-cpu-usage)
-- [Behavioral Issues](#behavioral-issues)
+  - [Colors Not Showing](#colors-not-showing)
+  - [Unexpected Text Wrapping](#unexpected-text-wrapping)
+  - [Inconsistent Message Formatting](#inconsistent-message-formatting)
+- [Function Issues](#function-issues)
   - [Die Function Not Exiting](#die-function-not-exiting)
-  - [Die Function Exiting When It Shouldn't](#die-function-exiting-when-it-shouldnt)
+  - [Text Styling Not Working](#text-styling-not-working)
+  - [TTY Detection Problems](#tty-detection-problems)
+- [Integration Issues](#integration-issues)
+  - [Library Not Found When Sourcing](#library-not-found-when-sourcing)
+  - [Conflicts With Other Libraries](#conflicts-with-other-libraries)
+- [Performance Issues](#performance-issues)
+  - [Slow Text Processing](#slow-text-processing)
+  - [High CPU Usage](#high-cpu-usage)
+- [Environment-Specific Issues](#environment-specific-issues)
+  - [Docker/Container Environments](#dockercontainer-environments)
+  - [CI/CD Environments](#cicd-environments)
+  - [Remote SSH Sessions](#remote-ssh-sessions)
 
 ## Display Issues
 
-### Colors Not Displaying
+### Colors Not Showing
 
-**Symptoms:**
-- Messages appear without color
-- ANSI style sequences are visible as plain text
+**Problem:** Messages appear without any color, even though you expect colored output.
 
 **Possible Causes:**
-1. Terminal does not support ANSI colors
-2. `NO_COLOR` environment variable is set
-3. `LIB_MSG_COLOR_MODE` is set to "off"
-4. Output is being redirected to a file or pipe
+- Terminal doesn't support color
+- Color mode is disabled or incorrectly set
+- `NO_COLOR` environment variable is set
+- Output is being redirected or piped
 
 **Solutions:**
-1. Check terminal compatibility:
-   ```sh
-   echo -e "\033[31mRed Text\033[0m"
-   ```
-   If you don't see red text, your terminal doesn't support ANSI colors.
 
-2. Check environment variables:
+1. **Check terminal color support:**
    ```sh
-   echo "NO_COLOR: ${NO_COLOR:-not set}"
-   echo "LIB_MSG_COLOR_MODE: ${LIB_MSG_COLOR_MODE:-auto}"
+   echo -e "\033[31mTest\033[0m"  # Should appear red
    ```
 
-3. Force colors on (if your terminal supports them):
+2. **Force colors on:**
    ```sh
    export LIB_MSG_COLOR_MODE="force_on"
-   ```
-
-4. Check if colors are enabled in the library:
-   ```sh
-   lib_msg_colors_enabled  # Should output "true" if colors are enabled
-   ```
-
-5. Reinitialize colors after changing environment:
-   ```sh
    lib_msg_reinit_colors
    ```
 
-### Text Not Wrapping Correctly
+3. **Check if NO_COLOR is set:**
+   ```sh
+   echo $NO_COLOR
+   unset NO_COLOR  # To enable colors
+   lib_msg_reinit_colors
+   ```
 
-**Symptoms:**
-- Text extends beyond terminal width
-- Text wraps at unexpected points
-- Line breaks appear in unusual places
+4. **Check if output is being redirected:**
+   ```sh
+   if [ "$(lib_msg_stdout_is_tty)" = "true" ]; then
+     echo "Terminal output - colors should work"
+   else
+     echo "Redirected output - colors may be disabled"
+   fi
+   ```
+
+### Unexpected Text Wrapping
+
+**Problem:** Text wraps at unexpected positions or doesn't wrap at all.
 
 **Possible Causes:**
-1. `COLUMNS` environment variable is not set or incorrect
-2. Terminal width detection is failing
-3. Text contains ANSI sequences that are affecting length calculations
+- Incorrect terminal width detection
+- COLUMNS environment variable not set or incorrect
+- Terminal width changed since initialization
 
 **Solutions:**
-1. Check terminal width detection:
+
+1. **Check detected terminal width:**
    ```sh
-   echo "COLUMNS: ${COLUMNS:-not set}"
    echo "Detected width: $(lib_msg_get_terminal_width)"
    ```
 
-2. Manually set and update terminal width:
+2. **Update terminal width manually:**
    ```sh
-   export COLUMNS=$(tput cols)
+   export COLUMNS=$(tput cols 2>/dev/null || echo 80)
+   lib_msg_update_terminal_width
+   echo "Updated width: $(lib_msg_get_terminal_width)"
+   ```
+
+3. **Force specific width:**
+   ```sh
+   export COLUMNS=80  # Or another desired width
    lib_msg_update_terminal_width
    ```
 
-3. For messages with ANSI colors, ensure the library is correctly calculating visible length:
-   ```sh
-   # Check if the library's ANSI stripping works correctly
-   colored_text=$(lib_msg_apply_style "Test text" "$(lib_msg_get_style "info")")
-   echo "Original: $colored_text"
-   echo "Stripped: $(lib_msg_strip_ansi "$colored_text")"
-   ```
+### Inconsistent Message Formatting
 
-### Broken ANSI Sequences
-
-**Symptoms:**
-- Text color or style changes unexpectedly
-- Terminal shows garbage characters
-- Styling doesn't reset properly after message
+**Problem:** Message prefixes or formatting looks different in different parts of your script.
 
 **Possible Causes:**
-1. Incomplete ANSI sequences
-2. Missing reset code after styled text
-3. Nested or overlapping style sequences
+- SCRIPT_NAME variable changed or unset
+- Mixing direct echo commands with lib_msg functions
+- Using different styling approaches
 
 **Solutions:**
-1. Always reset after applying styles:
+
+1. **Set SCRIPT_NAME consistently:**
    ```sh
-   # Ensure styles are properly closed
-   styled_text="$(lib_msg_apply_style "Important" "$(lib_msg_get_style "error")") normal text"
+   # At the beginning of your script, after sourcing lib_msg.sh
+   SCRIPT_NAME="my-app"
    ```
 
-2. Use the library's built-in styling functions instead of manual ANSI codes:
+2. **Use lib_msg functions consistently:**
    ```sh
-   # Instead of this:
-   echo "\033[31mRed\033[0m"
+   # Instead of:
+   echo "Error: Something went wrong"
    
-   # Do this:
-   echo "$(lib_msg_apply_style "Red" "$(lib_msg_build_style_sequence "$_LIB_MSG_SGR_FG_RED")")"
+   # Use:
+   err "Something went wrong"
    ```
 
-3. Strip ANSI codes completely if needed:
+3. **Create consistent custom prefixes:**
    ```sh
-   clean_text=$(lib_msg_strip_ansi "$problematic_text")
+   # For custom output formats
+   DEBUG_PREFIX=$(lib_msg_create_prefix "DEBUG" "$(lib_msg_get_style "dim")")
+   
+   # Then use consistently
+   lib_msg_output "Debug information" "$DEBUG_PREFIX"
+   ```
+
+## Function Issues
+
+### Die Function Not Exiting
+
+**Problem:** The `die` function displays the error message but doesn't exit the script.
+
+**Possible Causes:**
+- Script is being sourced, not executed
+- Shell options like `set -e` might be interfering
+
+**Solutions:**
+
+1. **Check if script is sourced:**
+   ```sh
+   (return 0 2>/dev/null) && echo "Script is being sourced" || echo "Script is being executed"
+   ```
+
+2. **Use explicit exit after die when sourced:**
+   ```sh
+   # When script might be sourced
+   if ! some_condition; then
+       die 1 "Error message"
+       # If script is sourced, code continues here
+       return 1  # Additional precaution
+   fi
+   ```
+
+3. **Check shell error handling:**
+   ```sh
+   # If you're using set -e, you might need to disable it temporarily
+   set +e
+   command_that_might_fail
+   status=$?
+   set -e
+   if [ $status -ne 0 ]; then
+       die $status "Command failed"
+   fi
+   ```
+
+### Text Styling Not Working
+
+**Problem:** Attempts to apply styling manually don't work or cause formatting issues.
+
+**Possible Causes:**
+- Missing reset codes
+- Incorrect style sequences
+- Colors disabled
+- Incompatible terminal
+
+**Solutions:**
+
+1. **Use lib_msg styling functions:**
+   ```sh
+   # Instead of manually applying ANSI codes:
+   echo "\033[1;31mError\033[0m"
+   
+   # Use the library functions:
+   error_style=$(lib_msg_get_style "error")
+   echo "$(lib_msg_apply_style "Error" "$error_style")"
+   ```
+
+2. **Always include reset code:**
+   ```sh
+   echo "${bold_text}Important${_LIB_MSG_CLR_RESET} normal text"
+   ```
+
+3. **Use apply_style instead of raw sequences:**
+   ```sh
+   styled=$(lib_msg_apply_style "Text" "$style_sequence")
+   echo "$styled"  # This handles reset codes automatically
+   ```
+
+### TTY Detection Problems
+
+**Problem:** TTY detection returns incorrect results.
+
+**Possible Causes:**
+- Running in an unusual environment (CI/CD, container, etc.)
+- Custom terminal might not report correctly
+
+**Solutions:**
+
+1. **Force TTY status:**
+   ```sh
+   export LIB_MSG_FORCE_STDOUT_TTY="true"
+   export LIB_MSG_FORCE_STDERR_TTY="true"
+   ```
+
+2. **Override color behavior instead:**
+   ```sh
+   export LIB_MSG_COLOR_MODE="force_on"  # or "off" if needed
+   lib_msg_reinit_colors
+   ```
+
+3. **Make your script TTY-agnostic:**
+   ```sh
+   # Always use lib_msg_apply_style instead of lib_msg_apply_style_if_tty
+   # Always check lib_msg_colors_enabled explicitly if needed
    ```
 
 ## Integration Issues
 
-### Script Name Not Showing Correctly
+### Library Not Found When Sourcing
 
-**Symptoms:**
-- Messages show "lib_msg.sh" instead of your script name
-- Wrong script name appears in message prefixes
+**Problem:** Attempts to source the library fail with "file not found" or similar errors.
 
 **Possible Causes:**
-1. `SCRIPT_NAME` variable not set
-2. `SCRIPT_NAME` being overwritten elsewhere
+- Incorrect file path
+- Script running from unexpected directory
+- Permissions issues
 
 **Solutions:**
-1. Set `SCRIPT_NAME` at the beginning of your script:
+
+1. **Use absolute path:**
    ```sh
-   # At the top of your script, after sourcing lib_msg.sh
-   SCRIPT_NAME="my_script.sh"
+   # If library is in a standard location
+   . /path/to/lib_msg.sh
    ```
 
-2. Use a more robust approach to get the script name:
+2. **Use path relative to script:**
    ```sh
-   # For direct execution (not when sourced)
-   SCRIPT_NAME=$(basename "$0")
+   SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+   . "$SCRIPT_DIR/lib/lib_msg.sh"
    ```
 
-3. Check if `SCRIPT_NAME` is being maintained:
+3. **Try multiple locations:**
    ```sh
-   msg "Current script name: $SCRIPT_NAME"
+   if [ -f "./lib_msg.sh" ]; then
+       . ./lib_msg.sh
+   elif [ -f "./lib/lib_msg.sh" ]; then
+       . ./lib/lib_msg.sh
+   elif [ -f "$HOME/lib/lib_msg.sh" ]; then
+       . "$HOME/lib/lib_msg.sh"
+   else
+       echo "Error: lib_msg.sh not found" >&2
+       exit 1
+   fi
    ```
 
-### Messages Appearing on Wrong Output Stream
+### Conflicts With Other Libraries
 
-**Symptoms:**
-- Error messages appear on stdout instead of stderr
-- Regular messages appear on stderr instead of stdout
+**Problem:** lib_msg.sh functions conflict with other libraries or existing functions.
 
 **Possible Causes:**
-1. Using the wrong message functions
-2. Redirecting output incorrectly
+- Function name collisions
+- Environment variable conflicts
+- ANSI color code conflicts
 
 **Solutions:**
-1. Use the correct functions for each stream:
-   - For stdout: `msg`, `msgn`, `info`, `infon`
-   - For stderr: `err`, `errn`, `warn`, `warnn`, `die`
 
-2. When using custom output functions, specify the stream correctly:
+1. **Check for naming conflicts:**
    ```sh
-   # For stderr (fourth parameter is "true")
-   lib_msg_output "Error message" "" "" "true"
-   
-   # For stdout (fourth parameter is "false" or omitted)
-   lib_msg_output "Normal message"
+   # Before sourcing lib_msg.sh
+   command -v msg >/dev/null && echo "Warning: 'msg' function already exists"
+   command -v err >/dev/null && echo "Warning: 'err' function already exists"
+   # etc. for other key functions
+   ```
+
+2. **Source libraries in specific order:**
+   ```sh
+   # If sourcing order matters
+   . ./lib_msg.sh  # First to establish baseline
+   . ./other_library.sh  # May override some functions
+   ```
+
+3. **Use namespaced variables in your scripts:**
+   ```sh
+   # Instead of generic variable names
+   MY_APP_COLUMNS=$COLUMNS  # Save original value
    ```
 
 ## Performance Issues
 
-### Slow Output with Large Messages
+### Slow Text Processing
 
-**Symptoms:**
-- Noticeable delay when displaying large messages
-- Script pauses during text wrapping or formatting
+**Problem:** Text processing operations (wrapping, ANSI stripping) are slow.
 
 **Possible Causes:**
-1. Pure shell implementations being used instead of external commands
-2. Excessive text wrapping due to narrow terminal
-3. Complex ANSI sequence processing
+- Large text blocks
+- Using pure shell functions when external commands would be faster
+- Excessive style operations
 
 **Solutions:**
-1. Ensure external commands are available:
+
+1. **Process text in smaller chunks:**
    ```sh
-   # Check if sed and tr are available
-   command -v sed >/dev/null 2>&1 && echo "sed available" || echo "sed not available"
-   command -v tr >/dev/null 2>&1 && echo "tr available" || echo "tr not available"
+   # Instead of one huge text block
+   long_text="..."
+   # Process in manageable sections
+   while read -r line; do
+       processed_line=$(lib_msg_get_wrapped_text "$line" 0)
+       echo "$processed_line"
+   done <<< "$long_text"
    ```
 
-2. Pre-process very large text before displaying:
+2. **Check external command availability:**
    ```sh
-   # For large text, pre-wrap it to avoid processing overhead
-   large_text="..."
-   wrapped_text=$(lib_msg_get_wrapped_text "$large_text" "$(lib_msg_get_terminal_width)")
-   echo "$wrapped_text"
+   # The library tries to use external commands like sed when available
+   # Make sure basic commands are in PATH for performance
+   command -v sed >/dev/null || echo "Warning: 'sed' not found, using slower shell fallbacks"
    ```
 
-3. Consider using chunked output for very large text:
+3. **Minimize redundant style operations:**
    ```sh
-   # Process and display in smaller chunks
-   while IFS= read -r line; do
-       msg "$line"
-   done <<< "$large_text"
+   # Cache style sequences
+   ERROR_STYLE=$(lib_msg_get_style "error")
+   
+   # Use in multiple places
+   echo "$(lib_msg_apply_style "Error 1" "$ERROR_STYLE")"
+   echo "$(lib_msg_apply_style "Error 2" "$ERROR_STYLE")"
    ```
 
 ### High CPU Usage
 
-**Symptoms:**
-- High CPU usage when processing messages
-- Script becomes unresponsive with large text
+**Problem:** Scripts using lib_msg.sh have higher CPU usage than expected.
 
 **Possible Causes:**
-1. Inefficient fallback implementations being used
-2. Excessive text processing operations
-3. Large input with character-by-character processing
+- Excessive text wrapping on long text
+- Inefficient use of lib_msg functions in loops
+- Redundant style calculations
 
 **Solutions:**
-1. Ensure optimal implementations are used:
-   ```sh
-   # Set up environment for optimal performance
-   export LIB_MSG_FORCE_TEXT_WRAP_IMPL="shell"  # Shell impl is optimized
-   ```
 
-2. Reduce the complexity of message formatting:
+1. **Avoid redundant operations in loops:**
    ```sh
-   # Avoid complex styling for very large messages
-   simple_text=$(lib_msg_strip_ansi "$complex_styled_text")
-   msg "$simple_text"
-   ```
-
-3. Consider pre-processing or splitting very large messages:
-   ```sh
-   # Break down large content into smaller chunks
-   echo "$large_content" | head -n 100 | while IFS= read -r line; do
-       msg "$line"
+   # Inefficient:
+   for i in $(seq 1 100); do
+       info "Processing item $i"  # Re-formats prefix each time
+   done
+   
+   # More efficient:
+   info_prefix="$(SCRIPT_NAME="$SCRIPT_NAME" lib_msg_create_prefix "I" "$(lib_msg_get_style "info")")"
+   for i in $(seq 1 100); do
+       lib_msg_output "Processing item $i" "$info_prefix"
    done
    ```
 
-## Behavioral Issues
+2. **Pre-process large text blocks:**
+   ```sh
+   # Pre-wrap long help text
+   HELP_TEXT=$(lib_msg_get_wrapped_text "$LONG_HELP_TEXT" 0)
+   
+   # Then output when needed
+   echo "$HELP_TEXT"
+   ```
 
-### Die Function Not Exiting
+3. **Use external commands for bulk processing:**
+   ```sh
+   # For large files with ANSI codes:
+   sed -E 's/\x1B\[[0-9;]*[mK]//g' large_file.log > clean_file.log
+   ```
 
-**Symptoms:**
-- Script continues after calling `die`
-- Error message is shown but execution doesn't stop
+## Environment-Specific Issues
+
+### Docker/Container Environments
+
+**Problem:** Library doesn't work as expected in Docker or other container environments.
 
 **Possible Causes:**
-1. The script containing `die` is being sourced, not executed
-2. Error code detection is failing
+- TTY detection issues
+- Terminal size reporting
+- Minimal shell environment
 
 **Solutions:**
-1. Check if your script is being sourced:
+
+1. **Force TTY settings:**
+   ```sh
+   # In your entrypoint script
+   export LIB_MSG_FORCE_STDOUT_TTY="true"
+   export LIB_MSG_FORCE_STDERR_TTY="true"
+   ```
+
+2. **Set explicit terminal size:**
+   ```sh
+   export COLUMNS=80
+   export LINES=24
+   lib_msg_update_terminal_width
+   ```
+
+3. **Force color mode:**
+   ```sh
+   # For CI environments that support color
+   export LIB_MSG_COLOR_MODE="force_on"
+   
+   # For environments that don't support color
+   export LIB_MSG_COLOR_MODE="off"
+   ```
+
+### CI/CD Environments
+
+**Problem:** Different behavior in CI/CD pipelines compared to local development.
+
+**Possible Causes:**
+- Non-interactive environment
+- Limited terminal capabilities
+- Environment variable differences
+
+**Solutions:**
+
+1. **Set appropriate color mode for CI:**
+   ```sh
+   # In CI config or script
+   export LIB_MSG_COLOR_MODE="off"  # Most predictable for logs
+   ```
+
+2. **Set explicit script name:**
+   ```sh
+   export SCRIPT_NAME="ci-build"  # Consistent identifier in logs
+   ```
+
+3. **For GitHub Actions with color support:**
+   ```sh
+   # GitHub Actions supports color
+   export LIB_MSG_COLOR_MODE="on"
+   ```
+
+### Remote SSH Sessions
+
+**Problem:** Unexpected behavior in remote SSH sessions or screen/tmux sessions.
+
+**Possible Causes:**
+- Limited terminal information
+- $TERM variable differences
+- Screen size reporting issues
+
+**Solutions:**
+
+1. **Update terminal size after connection:**
    ```sh
    # At the beginning of your script
-   (return 0 2>/dev/null) && echo "Script is being sourced" || echo "Script is being executed"
+   export COLUMNS=$(tput cols 2>/dev/null || echo 80)
+   export LINES=$(tput lines 2>/dev/null || echo 24)
+   lib_msg_update_terminal_width
    ```
 
-2. Use explicit exit in critical scenarios:
+2. **Check for screen/tmux:**
    ```sh
-   # For cases where you absolutely need to exit:
-   err "Critical error"
-   exit 1  # Explicitly exit instead of using die
-   ```
-
-3. Check your sourcing pattern if you're intentionally sourcing the script:
-   ```sh
-   # Source a script and capture its return code
-   . ./my_script.sh
-   if [ $? -ne 0 ]; then
-       echo "Sourced script indicated an error"
+   if [ -n "$TMUX" ] || [ -n "$STY" ]; then
+       # Running in tmux or screen
+       export COLUMNS=$(tput cols 2>/dev/null || echo 80)
+       lib_msg_update_terminal_width
    fi
    ```
 
-### Die Function Exiting When It Shouldn't
-
-**Symptoms:**
-- Script exits when `die` is called in a sourced context
-- Functions or libraries using `die` cause unexpected exits
-
-**Possible Causes:**
-1. Return validation is failing
-2. Complex sourcing chain affecting context detection
-
-**Solutions:**
-1. Test return validation:
+3. **Verify TTY status:**
    ```sh
-   # Test function to verify return behavior
-   test_return() {
-       if _lib_msg_is_return_valid; then
-           echo "Return is valid in this context"
-           return 0
-       else
-           echo "Return is not valid, would exit"
-           return 1
-       fi
-   }
-   
-   # Call the test function
-   test_return
-   ```
-
-2. Use a more explicit approach for critical libraries:
-   ```sh
-   # Define a context-aware exit function
-   safe_exit() {
-       if (return 0 2>/dev/null); then
-           return "$1"
-       else
-           exit "$1"
-       fi
-   }
-   
-   # Use it instead of die for simple cases
-   err "Error occurred"
-   safe_exit 1
-   ```
-
-3. Check the context at the beginning of your script:
-   ```sh
-   # Detect and store whether we're being sourced
-   (return 0 2>/dev/null)
-   SCRIPT_IS_SOURCED=$?
+   if [ "$(lib_msg_stdout_is_tty)" = "true" ]; then
+       echo "Interactive SSH session - normal mode"
+   else
+       echo "Non-interactive session - adapting output"
+       export LIB_MSG_COLOR_MODE="off"
+       lib_msg_reinit_colors
+   fi

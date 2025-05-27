@@ -2,7 +2,7 @@
 
 # 🖥️ lib_msg.sh
 
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![POSIX Compliant](https://img.shields.io/badge/POSIX-compliant-brightgreen.svg)](https://pubs.opengroup.org/onlinepubs/9699919799/)
 [![Shell](https://img.shields.io/badge/Shell-POSIX_sh-orange.svg)](https://pubs.opengroup.org/onlinepubs/9699919799/utilities/sh.html)
 [![Status](https://img.shields.io/badge/Status-Stable-success.svg)](https://github.com/ekartashov/lib_msg.sh)
@@ -266,7 +266,7 @@ The project includes comprehensive documentation:
 
 ## 📄 License
 
-This project is licensed under the [GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0).
+This project is licensed under the [MIT License](https://opensource.org/licenses/MIT).
 
 Copyright (c) 2023-2025 [ekartashov](https://github.com/ekartashov)
 

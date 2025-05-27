@@ -9,4 +9,4 @@
 - [] Identify parts of lib_msg.sh that have no tests and implement them
 - [] Fix length bug for progress bar: doesn't take into account the progress number taking space (" 100%" takes space, and " 10%" also takes space but has one less character)
 - [] Identify where the documentation is clear enough an correct it to be more concise (but don't overdo it)
-- [] Revisit lib_msg.sh functions that use tr or any other non-shell intergrated commands --- we want to get rid of them and have only shell-only implementation
+- [x] Revisit lib_msg.sh functions that use tr or any other non-shell intergrated commands --- we want to get rid of them and have only shell-only implementation

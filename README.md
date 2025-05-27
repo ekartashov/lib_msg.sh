@@ -6,6 +6,7 @@
 [![POSIX Compliant](https://img.shields.io/badge/POSIX-compliant-brightgreen.svg)](https://pubs.opengroup.org/onlinepubs/9699919799/)
 [![Shell](https://img.shields.io/badge/Shell-POSIX_sh-orange.svg)](https://pubs.opengroup.org/onlinepubs/9699919799/utilities/sh.html)
 [![Status](https://img.shields.io/badge/Status-Stable-success.svg)](https://github.com/ekartashov/lib_msg.sh)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/ekartashov/lib_msg.sh)
 
 **A lightweight, dependency-free shell library for beautiful terminal output**
 

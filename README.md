@@ -231,7 +231,7 @@ The library includes a comprehensive test suite using [BATS](https://github.com/
 bats ./test/
 
 # Run tests in parallel
-bats -T test/ -j $(nproc --ignore 2)
+bats test/ -j $(nproc --ignore 2)
 ```
 
 For detailed testing information, see [TESTING.md](./docs/TESTING.md).

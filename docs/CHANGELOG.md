@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Resolved all tr command dependencies with optimized pure shell implementations
 - Fixed misleading documentation comments in progress bar function
 - Improved performance of newline-to-space and whitespace removal operations
+- Fixed POSIX shell compatibility by eliminating bash-specific parameter expansions
+- Resolved "Bad substitution" errors in strict POSIX shell environments
+- Improved `lib_msg_prompt_yn` API design by switching from string output to shell exit codes
 
 ## [1.2.1] - 2025-05-15
 

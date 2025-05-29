@@ -521,7 +521,7 @@ echo "You chose: $answer"
 
 ### `lib_msg_prompt_yn`
 
-Displays a yes/no prompt and returns "true" or "false".
+Displays a yes/no prompt and returns a shell exit code.
 
 **Usage:**
 ```sh
@@ -533,7 +533,7 @@ lib_msg_prompt_yn <prompt_text> [style] <default_char>
 - `style`: Optional style for the prompt ("bracketed", "simple", or "" for no style)
 - `default_char`: **Mandatory** default choice ("Y", "y", "N", or "n")
 
-**Returns:** String "true" if user answered yes, "false" if user answered no.
+**Returns:** Exit code 0 if user answered yes, exit code 1 if user answered no.
 
 **Example:**
 ```sh

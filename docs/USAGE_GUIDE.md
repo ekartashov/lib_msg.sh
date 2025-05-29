@@ -311,23 +311,22 @@ highlight_style=$(lib_msg_get_style "highlight")
 email=$(lib_msg_prompt "Enter your email address" "" "$highlight_style")
 msg "Email: $email"
 
-# Yes/No prompt (no default)
-if lib_msg_prompt_yn "Do you want to continue?"; then
+# Yes/No prompt with default "yes" (no style)
+if lib_msg_prompt_yn "Do you want to continue?" "" "y"; then
     info "Continuing..."
 else
     warn "Operation cancelled by user"
 fi
 
-# Yes/No prompt with default "yes"
-if lib_msg_prompt_yn "Save changes?" "y"; then
+# Yes/No prompt with default "yes" and simple style
+if lib_msg_prompt_yn "Save changes?" "simple" "y"; then
     info "Saving changes..."
 else
     warn "Changes not saved"
 fi
 
-# Yes/No prompt with default "no" and styling
-warning_style=$(lib_msg_get_style "warning")
-if lib_msg_prompt_yn "Delete all files? (dangerous)" "n" "$warning_style"; then
+# Yes/No prompt with default "no" and bracketed styling
+if lib_msg_prompt_yn "Delete all files? (dangerous)" "bracketed" "n"; then
     err "Deleting files..."
 else
     info "Operation cancelled"
@@ -463,7 +462,7 @@ info "This utility helps you configure your application settings"
 # Check for existing config
 if [ -f "$CONFIG_FILE" ]; then
     info "Found existing configuration file"
-    if ! lib_msg_prompt_yn "Do you want to overwrite it?" "n"; then
+    if ! lib_msg_prompt_yn "Do you want to overwrite it?" "" "n"; then
         die 0 "Configuration cancelled. Existing file preserved."
     fi
 fi
@@ -485,7 +484,7 @@ msg "Port: $port"
 msg "User: $user"
 msg "Timeout: ${timeout}s"
 
-if ! lib_msg_prompt_yn "Save this configuration?" "y"; then
+if ! lib_msg_prompt_yn "Save this configuration?" "" "y"; then
     die 0 "Configuration cancelled by user."
 fi
 
@@ -565,7 +564,7 @@ deploy() {
 handle_error() {
     err "Deployment failed: $1"
     
-    if lib_msg_prompt_yn "Do you want to retry?" "y"; then
+    if lib_msg_prompt_yn "Do you want to retry?" "" "y"; then
         info "Retrying deployment..."
         deploy
     else

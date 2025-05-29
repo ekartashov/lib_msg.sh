@@ -447,8 +447,8 @@ lib_msg_output <message> [prefix] [style] [use_stderr] [no_newline]
 - `message`: The message to output
 - `prefix`: Optional prefix to prepend to the message
 - `style`: Optional style to apply to the prefix
-- `use_stderr`: Set to "true" to output to stderr instead of stdout (optional)
-- `no_newline`: Set to "true" to omit the trailing newline (optional)
+- `use_stderr`: Set to "true" to output to stderr instead of stdout (optional, defaults to "false")
+- `no_newline`: Set to "true" to omit the trailing newline (optional, defaults to "false")
 
 **Example:**
 ```sh
@@ -525,36 +525,35 @@ Displays a yes/no prompt and returns "true" or "false".
 
 **Usage:**
 ```sh
-lib_msg_prompt_yn <prompt_text> [default_y_or_n] [style]
+lib_msg_prompt_yn <prompt_text> [style] <default_char>
 ```
 
 **Parameters:**
 - `prompt_text`: The text to display as prompt
-- `default_y_or_n`: Optional default choice ("y" or "n")
-- `style`: Optional style for the prompt
+- `style`: Optional style for the prompt ("bracketed", "simple", or "" for no style)
+- `default_char`: **Mandatory** default choice ("Y", "y", "N", or "n")
 
 **Returns:** String "true" if user answered yes, "false" if user answered no.
 
 **Example:**
 ```sh
-# Yes/no prompt with no default
-if lib_msg_prompt_yn "Continue with installation?"; then
+# Yes/no prompt with default yes (no style)
+if lib_msg_prompt_yn "Continue with installation?" "" "y"; then
     echo "Continuing..."
 else
     echo "Aborting."
     exit 0
 fi
 
-# Yes/no prompt with default yes
-if lib_msg_prompt_yn "Save changes before exiting?" "y"; then
+# Yes/no prompt with default yes and simple style
+if lib_msg_prompt_yn "Save changes before exiting?" "simple" "y"; then
     echo "Saving changes..."
 else
     echo "Discarding changes..."
 fi
 
 # Styled yes/no prompt with default no
-warning_style=$(lib_msg_get_style "warning")
-if lib_msg_prompt_yn "Delete all files?" "n" "$warning_style"; then
+if lib_msg_prompt_yn "Delete all files?" "bracketed" "n"; then
     echo "Deleting files..."
 else
     echo "Operation cancelled."
@@ -647,22 +646,22 @@ lib_msg_progress_bar <current> <max> [width] [filled_char] [empty_char]
 **Parameters:**
 - `current`: Current progress value
 - `max`: Maximum progress value
-- `width`: Width of the progress bar in characters (default: 20)
+- `width`: Total output width including brackets and percentage (default: 20, minimum: 10)
 - `filled_char`: Character for filled portion (default: #)
 - `empty_char`: Character for empty portion (default: -)
 
-**Returns:** A text progress bar like "[#####-----] 50%".
+**Returns:** A text progress bar like "[#####-----] [ 50%]".
 
 **Example:**
 ```sh
 # Basic progress bar
-echo "$(lib_msg_progress_bar 5 10)"  # Shows: [##########----------] 50%
+echo "$(lib_msg_progress_bar 5 10)"  # Shows: [##########----------] [ 50%]
 
 # Custom width progress bar
-echo "$(lib_msg_progress_bar 7 10 30)"  # Shows: [#####################---------] 70%
+echo "$(lib_msg_progress_bar 7 10 30)"  # Shows: [#####################---------] [ 70%]
 
 # Custom characters
-echo "$(lib_msg_progress_bar 3 10 20 "=" " ")"  # Shows: [======              ] 30%
+echo "$(lib_msg_progress_bar 3 10 20 "=" " ")"  # Shows: [======              ] [ 30%]
 
 # Dynamic progress in a loop
 total=10

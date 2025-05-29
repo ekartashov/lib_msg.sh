@@ -55,10 +55,7 @@ test_prompt_with_input() {
     } > "$temp_file" 2>/dev/null
     exit_code=$(cat "${temp_file}.exit" 2>/dev/null || echo "0")
     
-    # The return value should be the last line that doesn't contain ': ' (prompt indicator)
-    # For lib_msg_prompt, the output is: "prompt_text: return_value"
-    # For lib_msg_prompt_yn, the output is: "test_script.sh: Q: prompt_text [Y/n]: return_value"
-    # Handle both formats: extract after ]: (for yn) or after final : (for regular prompt)
+    # For lib_msg_prompt, extract the return value from the last line
     result=$(tail -n 1 "$temp_file" | sed 's/.*]: *//; t; s/.*: *//')
     
     # Clean up and return result
@@ -72,6 +69,17 @@ test_prompt_with_input() {
     else
         printf "%s" "$result"
     fi
+}
+
+# Helper function specifically for lib_msg_prompt_yn that returns exit codes
+test_prompt_yn_with_input() {
+    local input="$1"
+    shift
+    
+    # Run the function with input and capture its exit code
+    printf "%s\n" "$input" | "$@" >/dev/null 2>&1
+    local exit_code=$?
+    return $exit_code
 }
 
 # ========================================================================
@@ -159,114 +167,103 @@ test_prompt_with_input() {
 # --- lib_msg_prompt_yn() Tests ---
 # ========================================================================
 
-@test "lib_msg_prompt_yn(): responds 'true' to 'y' input" {
+@test "lib_msg_prompt_yn(): responds with exit code 0 to 'y' input" {
     # Set up TTY simulation
     simulate_tty_conditions 0 0  # Both stdout and stderr are TTY
     
-    # Test 'y' response
-    result=$(test_prompt_with_input "y" lib_msg_prompt_yn "Continue?" "" "y")
-    
-    [ "$result" = "true" ]
+    # Test 'y' response - should return exit code 0
+    run test_prompt_yn_with_input "y" lib_msg_prompt_yn "Continue?" "" "y"
+    [ "$status" -eq 0 ]
 }
 
-@test "lib_msg_prompt_yn(): responds 'true' to 'yes' input" {
+@test "lib_msg_prompt_yn(): responds with exit code 0 to 'yes' input" {
     # Set up TTY simulation
     simulate_tty_conditions 0 0  # Both stdout and stderr are TTY
     
-    # Test 'yes' response
-    result=$(test_prompt_with_input "yes" lib_msg_prompt_yn "Continue?" "" "y")
-    
-    [ "$result" = "true" ]
+    # Test 'yes' response - should return exit code 0
+    run test_prompt_yn_with_input "yes" lib_msg_prompt_yn "Continue?" "" "y"
+    [ "$status" -eq 0 ]
 }
 
-@test "lib_msg_prompt_yn(): responds 'true' to 'Y' input (case insensitive)" {
+@test "lib_msg_prompt_yn(): responds with exit code 0 to 'Y' input (case insensitive)" {
     # Set up TTY simulation
     simulate_tty_conditions 0 0  # Both stdout and stderr are TTY
     
-    # Test 'Y' response (uppercase)
-    result=$(test_prompt_with_input "Y" lib_msg_prompt_yn "Continue?" "" "y")
-    
-    [ "$result" = "true" ]
+    # Test 'Y' response (uppercase) - should return exit code 0
+    run test_prompt_yn_with_input "Y" lib_msg_prompt_yn "Continue?" "" "y"
+    [ "$status" -eq 0 ]
 }
 
-@test "lib_msg_prompt_yn(): responds 'true' to 'YES' input (case insensitive)" {
+@test "lib_msg_prompt_yn(): responds with exit code 0 to 'YES' input (case insensitive)" {
     # Set up TTY simulation
     simulate_tty_conditions 0 0  # Both stdout and stderr are TTY
     
-    # Test 'YES' response (uppercase)
-    result=$(test_prompt_with_input "YES" lib_msg_prompt_yn "Continue?" "" "y")
-    
-    [ "$result" = "true" ]
+    # Test 'YES' response (uppercase) - should return exit code 0
+    run test_prompt_yn_with_input "YES" lib_msg_prompt_yn "Continue?" "" "y"
+    [ "$status" -eq 0 ]
 }
 
-@test "lib_msg_prompt_yn(): responds 'false' to 'n' input" {
+@test "lib_msg_prompt_yn(): responds with exit code 1 to 'n' input" {
     # Set up TTY simulation
     simulate_tty_conditions 0 0  # Both stdout and stderr are TTY
     
-    # Test 'n' response
-    result=$(test_prompt_with_input "n" lib_msg_prompt_yn "Continue?" "" "n")
-    
-    [ "$result" = "false" ]
+    # Test 'n' response - should return exit code 1
+    run test_prompt_yn_with_input "n" lib_msg_prompt_yn "Continue?" "" "n"
+    [ "$status" -eq 1 ]
 }
 
-@test "lib_msg_prompt_yn(): responds 'false' to 'no' input" {
+@test "lib_msg_prompt_yn(): responds with exit code 1 to 'no' input" {
     # Set up TTY simulation
     simulate_tty_conditions 0 0  # Both stdout and stderr are TTY
     
-    # Test 'no' response
-    result=$(test_prompt_with_input "no" lib_msg_prompt_yn "Continue?" "" "n")
-    
-    [ "$result" = "false" ]
+    # Test 'no' response - should return exit code 1
+    run test_prompt_yn_with_input "no" lib_msg_prompt_yn "Continue?" "" "n"
+    [ "$status" -eq 1 ]
 }
 
-@test "lib_msg_prompt_yn(): responds 'false' to invalid input" {
+@test "lib_msg_prompt_yn(): responds with exit code 1 to invalid input" {
     # Set up TTY simulation
     simulate_tty_conditions 0 0  # Both stdout and stderr are TTY
     
-    # Test invalid response
-    result=$(test_prompt_with_input "invalid" lib_msg_prompt_yn "Continue?" "" "n")
-    
-    [ "$result" = "false" ]
+    # Test invalid response - should return exit code 1
+    run test_prompt_yn_with_input "invalid" lib_msg_prompt_yn "Continue?" "" "n"
+    [ "$status" -eq 1 ]
 }
 
-@test "lib_msg_prompt_yn(): default to 'y' - empty input uses default" {
+@test "lib_msg_prompt_yn(): default to 'y' - empty input uses default (exit code 0)" {
     # Set up TTY simulation
     simulate_tty_conditions 0 0  # Both stdout and stderr are TTY
     
-    # Test empty input with 'y' default
-    result=$(test_prompt_with_input "" lib_msg_prompt_yn "Continue?" "" "y")
-    
-    [ "$result" = "true" ]
+    # Test empty input with 'y' default - should return exit code 0
+    run test_prompt_yn_with_input "" lib_msg_prompt_yn "Continue?" "" "y"
+    [ "$status" -eq 0 ]
 }
 
-@test "lib_msg_prompt_yn(): default to 'n' - empty input uses default" {
+@test "lib_msg_prompt_yn(): default to 'n' - empty input uses default (exit code 1)" {
     # Set up TTY simulation
     simulate_tty_conditions 0 0  # Both stdout and stderr are TTY
     
-    # Test empty input with 'n' default
-    result=$(test_prompt_with_input "" lib_msg_prompt_yn "Continue?" "" "n")
-    
-    [ "$result" = "false" ]
+    # Test empty input with 'n' default - should return exit code 1
+    run test_prompt_yn_with_input "" lib_msg_prompt_yn "Continue?" "" "n"
+    [ "$status" -eq 1 ]
 }
 
-@test "lib_msg_prompt_yn(): default to 'Y' - uppercase default" {
+@test "lib_msg_prompt_yn(): default to 'Y' - uppercase default (exit code 0)" {
     # Set up TTY simulation
     simulate_tty_conditions 0 0  # Both stdout and stderr are TTY
     
-    # Test empty input with 'Y' default (uppercase)
-    result=$(test_prompt_with_input "" lib_msg_prompt_yn "Continue?" "" "Y")
-    
-    [ "$result" = "true" ]
+    # Test empty input with 'Y' default (uppercase) - should return exit code 0
+    run test_prompt_yn_with_input "" lib_msg_prompt_yn "Continue?" "" "Y"
+    [ "$status" -eq 0 ]
 }
 
-@test "lib_msg_prompt_yn(): default to 'N' - uppercase default" {
+@test "lib_msg_prompt_yn(): default to 'N' - uppercase default (exit code 1)" {
     # Set up TTY simulation
     simulate_tty_conditions 0 0  # Both stdout and stderr are TTY
     
-    # Test empty input with 'N' default (uppercase)
-    result=$(test_prompt_with_input "" lib_msg_prompt_yn "Continue?" "" "N")
-    
-    [ "$result" = "false" ]
+    # Test empty input with 'N' default (uppercase) - should return exit code 1
+    run test_prompt_yn_with_input "" lib_msg_prompt_yn "Continue?" "" "N"
+    [ "$status" -eq 1 ]
 }
 
 @test "lib_msg_prompt_yn(): invalid default value - should error" {
@@ -279,34 +276,31 @@ test_prompt_with_input() {
     [ "$status" -ne 0 ]  # Should fail with non-zero exit code
 }
 
-@test "lib_msg_prompt_yn(): whitespace handling - removes spaces from input" {
+@test "lib_msg_prompt_yn(): whitespace handling - removes spaces from input (exit code 0)" {
     # Set up TTY simulation
     simulate_tty_conditions 0 0  # Both stdout and stderr are TTY
     
-    # Test input with spaces
-    result=$(test_prompt_with_input "  y  " lib_msg_prompt_yn "Continue?" "" "y")
-    
-    [ "$result" = "true" ]
+    # Test input with spaces - should return exit code 0
+    run test_prompt_yn_with_input "  y  " lib_msg_prompt_yn "Continue?" "" "y"
+    [ "$status" -eq 0 ]
 }
 
-@test "lib_msg_prompt_yn(): responds 'false' to 'N' input (case insensitive)" {
+@test "lib_msg_prompt_yn(): responds with exit code 1 to 'N' input (case insensitive)" {
     # Set up TTY simulation
     simulate_tty_conditions 0 0  # Both stdout and stderr are TTY
     
-    # Test 'N' response (uppercase)
-    result=$(test_prompt_with_input "N" lib_msg_prompt_yn "Continue?" "" "n")
-    
-    [ "$result" = "false" ]
+    # Test 'N' response (uppercase) - should return exit code 1
+    run test_prompt_yn_with_input "N" lib_msg_prompt_yn "Continue?" "" "n"
+    [ "$status" -eq 1 ]
 }
 
-@test "lib_msg_prompt_yn(): responds 'false' to 'NO' input (case insensitive)" {
+@test "lib_msg_prompt_yn(): responds with exit code 1 to 'NO' input (case insensitive)" {
     # Set up TTY simulation
     simulate_tty_conditions 0 0  # Both stdout and stderr are TTY
     
-    # Test 'NO' response (uppercase)
-    result=$(test_prompt_with_input "NO" lib_msg_prompt_yn "Continue?" "" "n")
-    
-    [ "$result" = "false" ]
+    # Test 'NO' response (uppercase) - should return exit code 1
+    run test_prompt_yn_with_input "NO" lib_msg_prompt_yn "Continue?" "" "n"
+    [ "$status" -eq 1 ]
 }
 
 # ========================================================================
@@ -366,7 +360,7 @@ test_prompt_with_input() {
     # Capture the full prompt output to verify format
     local temp_file=$(mktemp)
     {
-        printf "n\n" | lib_msg_prompt_yn "Continue?" "" "N"
+        printf "n\n" | lib_msg_prompt_yn "Continue?" "" "N" || true
     } > "$temp_file" 2>/dev/null
     
     # Check that the prompt contains [y/N]
@@ -384,7 +378,7 @@ test_prompt_with_input() {
     # Capture the full prompt output to verify format
     local temp_file=$(mktemp)
     {
-        printf "n\n" | lib_msg_prompt_yn "Continue?" "" "n"
+        printf "n\n" | lib_msg_prompt_yn "Continue?" "" "n" || true
     } > "$temp_file" 2>/dev/null
     
     # Check that the prompt contains [y/N]
@@ -395,44 +389,40 @@ test_prompt_with_input() {
     [ "$format_check" -eq 0 ]
 }
 
-@test "lib_msg_prompt_yn(): empty input with 'Y' default returns true" {
+@test "lib_msg_prompt_yn(): empty input with 'Y' default returns exit code 0" {
     # Set up TTY simulation
     simulate_tty_conditions 0 0  # Both stdout and stderr are TTY
     
-    # Test empty input with 'Y' default (uppercase)
-    result=$(test_prompt_with_input "" lib_msg_prompt_yn "Continue?" "" "Y")
-    
-    [ "$result" = "true" ]
+    # Test empty input with 'Y' default (uppercase) - should return exit code 0
+    run test_prompt_yn_with_input "" lib_msg_prompt_yn "Continue?" "" "Y"
+    [ "$status" -eq 0 ]
 }
 
-@test "lib_msg_prompt_yn(): empty input with 'N' default returns false" {
+@test "lib_msg_prompt_yn(): empty input with 'N' default returns exit code 1" {
     # Set up TTY simulation
     simulate_tty_conditions 0 0  # Both stdout and stderr are TTY
     
-    # Test empty input with 'N' default (uppercase)
-    result=$(test_prompt_with_input "" lib_msg_prompt_yn "Continue?" "" "N")
-    
-    [ "$result" = "false" ]
+    # Test empty input with 'N' default (uppercase) - should return exit code 1
+    run test_prompt_yn_with_input "" lib_msg_prompt_yn "Continue?" "" "N"
+    [ "$status" -eq 1 ]
 }
 
-@test "lib_msg_prompt_yn(): user input overrides default" {
+@test "lib_msg_prompt_yn(): user input overrides default (n when default is Y)" {
     # Set up TTY simulation
     simulate_tty_conditions 0 0  # Both stdout and stderr are TTY
     
-    # Test user typing 'n' when default is 'Y'
-    result=$(test_prompt_with_input "n" lib_msg_prompt_yn "Continue?" "" "Y")
-    
-    [ "$result" = "false" ]
+    # Test user typing 'n' when default is 'Y' - should return exit code 1
+    run test_prompt_yn_with_input "n" lib_msg_prompt_yn "Continue?" "" "Y"
+    [ "$status" -eq 1 ]
 }
 
-@test "lib_msg_prompt_yn(): user input overrides default (opposite case)" {
+@test "lib_msg_prompt_yn(): user input overrides default (y when default is N)" {
     # Set up TTY simulation
     simulate_tty_conditions 0 0  # Both stdout and stderr are TTY
     
-    # Test user typing 'y' when default is 'N'
-    result=$(test_prompt_with_input "y" lib_msg_prompt_yn "Continue?" "" "N")
-    
-    [ "$result" = "true" ]
+    # Test user typing 'y' when default is 'N' - should return exit code 0
+    run test_prompt_yn_with_input "y" lib_msg_prompt_yn "Continue?" "" "N"
+    [ "$status" -eq 0 ]
 }
 
 @test "lib_msg_prompt_yn(): prompt includes script name prefix" {

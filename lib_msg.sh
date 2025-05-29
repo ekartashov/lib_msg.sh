@@ -493,24 +493,22 @@ _lib_msg_tr_remove_whitespace() {
         *) printf '%s' "$_input"; return ;; # No whitespace, return input as is
     esac
     
-    # Use parameter expansion to remove all whitespace in a single operation
-    # First handle spaces (most common whitespace)
-    _result="${_input// /}"
+    # Use pure POSIX shell implementation to remove all whitespace
+    _result=""
+    _remaining="$_input"
     
-    # Then handle tabs
-    _result="${_result//	/}"
-    
-    # Handle newlines (must use $'\n' syntax)
-    _result="${_result//$'\n'/}"
-    
-    # Handle carriage returns
-    _result="${_result//$'\r'/}"
-    
-    # Handle vertical tabs
-    _result="${_result//$'\v'/}"
-    
-    # Handle form feeds
-    _result="${_result//$'\f'/}"
+    # Process character by character, skipping whitespace
+    while [ -n "$_remaining" ]; do
+        # Extract first character
+        _char="${_remaining%"${_remaining#?}"}"
+        _remaining="${_remaining#?}"
+        
+        # Check if character is whitespace using case pattern
+        case "$_char" in
+            [[:space:]]) : ;; # Skip whitespace characters
+            *) _result="${_result}${_char}" ;; # Keep non-whitespace
+        esac
+    done
     
     printf '%s' "$_result"
 }
@@ -1031,9 +1029,9 @@ lib_msg_prompt() {
     fi
 }
 
-# Display a yes/no prompt and return the result
+# Display a yes/no prompt and return the result via exit code
 # Args: $1 = prompt text, $2 = prompt style (optional), $3 = default char (Y/y/N/n, mandatory)
-# Returns: "true" for yes, "false" for no
+# Returns: exit code 0 for yes, 1 for no
 lib_msg_prompt_yn() {
     _prompt_text="$1"
     _prompt_style="${2:-}"
@@ -1094,11 +1092,16 @@ lib_msg_prompt_yn() {
     # Convert to lowercase and trim using pure shell
     _answer=$(printf "%s" "$_answer")
     
-    # Convert to lowercase using parameter expansion
+    # Convert to lowercase using POSIX-compatible approach
     _lower_answer=""
-    _i=0
-    while [ $_i -lt ${#_answer} ]; do
-        _char="${_answer:$_i:1}"
+    _remaining="$_answer"
+    
+    # Process character by character using POSIX parameter expansion
+    while [ -n "$_remaining" ]; do
+        # Extract first character
+        _char="${_remaining%"${_remaining#?}"}"
+        _remaining="${_remaining#?}"
+        
         case "$_char" in
             [A-Z])
                 # Convert uppercase to lowercase using case statement
@@ -1119,8 +1122,6 @@ lib_msg_prompt_yn() {
             [[:space:]]) : ;; # Skip whitespace
             *) _lower_answer="${_lower_answer}${_char}" ;;
         esac
-        
-        _i=$((_i + 1))
     done
     
     _answer="$_lower_answer"
@@ -1130,17 +1131,17 @@ lib_msg_prompt_yn() {
         _answer="$_default"
     fi
     
-    # Check input
+    # Check input and return appropriate exit code
     case "$_answer" in
         y|yes)
-            printf "true"
+            return 0  # Success/yes
             ;;
         n|no)
-            printf "false"
+            return 1  # No
             ;;
         *)
-            # Invalid input, default to false
-            printf "false"
+            # Invalid input, default to no
+            return 1
             ;;
     esac
 }

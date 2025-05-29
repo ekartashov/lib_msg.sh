@@ -329,31 +329,363 @@ load "../lib_msg.sh"
 }
 
 @test "lib_msg_progress_bar should generate progress bars" {
-  # Test basic progress bar
+  # Test basic progress bar (default width 20, content width 11)
   result=$(lib_msg_progress_bar 5 10)
-  [ "$result" = "[##########----------] 50%" ]
+  [ "$result" = "[#####------] [ 50%]" ]
   
-  # Test complete progress bar
+  # Test complete progress bar (default width 20, content width 11)
   result=$(lib_msg_progress_bar 10 10)
-  [ "$result" = "[####################] 100%" ]
+  [ "$result" = "[###########] [100%]" ]
   
-  # Test empty progress bar
+  # Test empty progress bar (default width 20, content width 11)
   result=$(lib_msg_progress_bar 0 10)
-  [ "$result" = "[--------------------] 0%" ]
+  [ "$result" = "[-----------] [  0%]" ]
   
-  # Test custom width and characters
+  # Test custom width and characters (width 10, content width 1)
   result=$(lib_msg_progress_bar 3 6 10 ">" " ")
-  [ "$result" = "[>>>>>     ] 50%" ]
+  [ "$result" = "[ ] [ 50%]" ]
   
   # Test with invalid inputs
   result=$(lib_msg_progress_bar -5 10)
-  [ "$result" = "[--------------------] 0%" ]
+  [ "$result" = "[-----------] [  0%]" ]
   
   result=$(lib_msg_progress_bar 15 10)
-  [ "$result" = "[####################] 100%" ]
+  [ "$result" = "[###########] [100%]" ]
   
   result=$(lib_msg_progress_bar 5 0)
-  [ "$result" = "[####################] 100%" ]
+  [ "$result" = "[###########] [100%]" ]
+}
+
+# ========================================================================
+# --- Progress Bar Length Consistency Tests ---
+# ========================================================================
+
+@test "lib_msg_progress_bar should maintain consistent output length with padding" {
+  # Test that different percentage values produce same total length
+  # This tests the padding fix for the length bug
+  
+  # Test with single digit percentages (0-9%) - should have 2 spaces padding inside brackets
+  result_0=$(lib_msg_progress_bar 0 10)
+  result_5=$(lib_msg_progress_bar 5 100)
+  result_9=$(lib_msg_progress_bar 9 100)
+  
+  # All should end with "[  X%]" (2 spaces + single digit + % inside brackets)
+  [[ "$result_0" =~ \]\ \[\ \ [0-9]%\]$ ]]
+  [[ "$result_5" =~ \]\ \[\ \ [0-9]%\]$ ]]
+  [[ "$result_9" =~ \]\ \[\ \ [0-9]%\]$ ]]
+  
+  # Test with double digit percentages (10-99%) - should have 1 space padding inside brackets
+  result_10=$(lib_msg_progress_bar 1 10)
+  result_50=$(lib_msg_progress_bar 50 100)
+  result_99=$(lib_msg_progress_bar 99 100)
+  
+  # All should end with "[ XX%]" (1 space + double digit + % inside brackets)
+  [[ "$result_10" =~ \]\ \[\ [0-9][0-9]%\]$ ]]
+  [[ "$result_50" =~ \]\ \[\ [0-9][0-9]%\]$ ]]
+  [[ "$result_99" =~ \]\ \[\ [0-9][0-9]%\]$ ]]
+  
+  # Test with 100% - should have no space padding inside brackets
+  result_100=$(lib_msg_progress_bar 10 10)
+  
+  # Should end with "[100%]" (no space + 100% inside brackets)
+  [[ "$result_100" =~ \]\ \[100%\]$ ]]
+}
+
+@test "lib_msg_progress_bar should have same total length regardless of percentage" {
+  # This is the core test for the length bug fix
+  # All progress bars with same width should have identical total character count
+  
+  width=20
+  
+  # Generate progress bars for different percentages
+  result_0=$(lib_msg_progress_bar 0 100 "$width")
+  result_5=$(lib_msg_progress_bar 5 100 "$width")
+  result_10=$(lib_msg_progress_bar 10 100 "$width")
+  result_50=$(lib_msg_progress_bar 50 100 "$width")
+  result_99=$(lib_msg_progress_bar 99 100 "$width")
+  result_100=$(lib_msg_progress_bar 100 100 "$width")
+  
+  # Get the length of each result
+  len_0=${#result_0}
+  len_5=${#result_5}
+  len_10=${#result_10}
+  len_50=${#result_50}
+  len_99=${#result_99}
+  len_100=${#result_100}
+  
+  # All lengths should be identical
+  [ "$len_0" -eq "$len_5" ]
+  [ "$len_5" -eq "$len_10" ]
+  [ "$len_10" -eq "$len_50" ]
+  [ "$len_50" -eq "$len_99" ]
+  [ "$len_99" -eq "$len_100" ]
+  
+  # For debugging: show the actual lengths if test fails
+  echo "Lengths: 0%=$len_0, 5%=$len_5, 10%=$len_10, 50%=$len_50, 99%=$len_99, 100%=$len_100" >&3
+}
+
+@test "lib_msg_progress_bar should maintain consistent length with custom width" {
+  # Test the length consistency with different custom widths
+  
+  # Test with width 10
+  result_0_w10=$(lib_msg_progress_bar 0 10 10)
+  result_50_w10=$(lib_msg_progress_bar 5 10 10)
+  result_100_w10=$(lib_msg_progress_bar 10 10 10)
+  
+  len_0_w10=${#result_0_w10}
+  len_50_w10=${#result_50_w10}
+  len_100_w10=${#result_100_w10}
+  
+  [ "$len_0_w10" -eq "$len_50_w10" ]
+  [ "$len_50_w10" -eq "$len_100_w10" ]
+  
+  # Test with width 30
+  result_0_w30=$(lib_msg_progress_bar 0 10 30)
+  result_50_w30=$(lib_msg_progress_bar 5 10 30)
+  result_100_w30=$(lib_msg_progress_bar 10 10 30)
+  
+  len_0_w30=${#result_0_w30}
+  len_50_w30=${#result_50_w30}
+  len_100_w30=${#result_100_w30}
+  
+  [ "$len_0_w30" -eq "$len_50_w30" ]
+  [ "$len_50_w30" -eq "$len_100_w30" ]
+  
+  # Different widths should produce different total lengths
+  [ "$len_0_w10" -ne "$len_0_w30" ]
+}
+
+@test "lib_msg_progress_bar should preserve progress bar content width" {
+  # Test that the actual progress bar (between first brackets) maintains specified width
+  # regardless of percentage padding
+  
+  width=15
+  
+  result_0=$(lib_msg_progress_bar 0 100 "$width")
+  result_50=$(lib_msg_progress_bar 50 100 "$width")
+  result_100=$(lib_msg_progress_bar 100 100 "$width")
+  
+  # Extract the progress bar content (between first [ and ])
+  bar_0=$(echo "$result_0" | sed 's/^\[\([^]]*\)\].*$/\1/')
+  bar_50=$(echo "$result_50" | sed 's/^\[\([^]]*\)\].*$/\1/')
+  bar_100=$(echo "$result_100" | sed 's/^\[\([^]]*\)\].*$/\1/')
+  
+  # All progress bar contents should have same length (the specified width adjusted for current implementation)
+  expected_width=$(( width - 9 ))
+  if [ "$expected_width" -lt 1 ]; then expected_width=1; fi
+  
+  [ ${#bar_0} -eq "$expected_width" ]
+  [ ${#bar_50} -eq "$expected_width" ]
+  [ ${#bar_100} -eq "$expected_width" ]
+  
+  # For debugging
+  echo "Progress bar widths: 0%=${#bar_0}, 50%=${#bar_50}, 100%=${#bar_100}, expected=$expected_width" >&3
+}
+
+@test "lib_msg_progress_bar should handle boundary conditions and extreme inputs" {
+    # Test with current = 0
+    result=$(lib_msg_progress_bar 0 100)
+    [[ "$result" =~ ^\[[-]{11}\]\ \[\ \ 0%\]$ ]]
+    
+    # Test with current = max
+    result=$(lib_msg_progress_bar 100 100)
+    [[ "$result" =~ ^\[#{11}\]\ \[100%\]$ ]]
+    
+    # Test with current > max (should cap at 100%)
+    result=$(lib_msg_progress_bar 150 100)
+    [[ "$result" =~ ^\[#{11}\]\ \[100%\]$ ]]
+    
+    # Test with very small max value
+    result=$(lib_msg_progress_bar 1 2)
+    [[ "$result" =~ ^\[#{5}[-]{6}\]\ \[\ 50%\]$ ]]
+    
+    # Test with very large numbers
+    result=$(lib_msg_progress_bar 999999 1000000)
+    [[ "$result" =~ ^\[#{10}[-]{1}\]\ \[\ 99%\]$ ]]
+}
+
+@test "lib_msg_progress_bar should handle invalid inputs gracefully" {
+    # Test with negative current (should treat as 0)
+    result=$(lib_msg_progress_bar -10 100)
+    [[ "$result" =~ ^\[[-]{11}\]\ \[\ \ 0%\]$ ]]
+    
+    # Test with zero max (implementation shows 100%)
+    result=$(lib_msg_progress_bar 50 0)
+    [[ "$result" =~ ^\[#{11}\]\ \[100%\]$ ]]
+    
+    # Test with negative max (implementation shows 100%)
+    result=$(lib_msg_progress_bar 10 -5)
+    [[ "$result" =~ ^\[#{11}\]\ \[100%\]$ ]]
+    
+    # Test with both negative (implementation shows 0%)
+    result=$(lib_msg_progress_bar -10 -5)
+    [[ "$result" =~ ^\[[-]{11}\]\ \[\ \ 0%\]$ ]]
+}
+
+@test "lib_msg_progress_bar should handle extreme width values" {
+    # Test with width = 9 (minimum possible, content_width = 0)
+    result=$(lib_msg_progress_bar 50 100 9)
+    [[ "$result" == "[-] [ 50%]" ]]
+    
+    # Test with width = 10 (content_width = 1)
+    result=$(lib_msg_progress_bar 50 100 10)
+    [[ "$result" == "[-] [ 50%]" ]]
+    
+    # Test with width = 11 (content_width = 2)
+    result=$(lib_msg_progress_bar 50 100 11)
+    [[ "$result" =~ ^\[#[-]\]\ \[\ 50%\]$ ]]
+    
+    # Test with very large width
+    result=$(lib_msg_progress_bar 50 100 50)
+    content_width=$((50 - 9))  # 41 characters
+    expected_filled=$((content_width / 2))  # 20.5 -> 20 characters
+    expected_empty=$((content_width - expected_filled))  # 21 characters
+    [[ ${#result} -eq 50 ]]
+    [[ "$result" =~ ^\[#{20}[-]{21}\]\ \[\ 50%\]$ ]]
+}
+
+@test "lib_msg_progress_bar should handle precision in percentage calculations" {
+    # Test rounding scenarios
+    # 1/3 = 33.33...% should round to 33%
+    result=$(lib_msg_progress_bar 1 3)
+    [[ "$result" =~ ^\[[#]{3}[-]{8}\]\ \[\ 33%\]$ ]]
+    
+    # 2/3 = 66.66...% should round to 66%
+    result=$(lib_msg_progress_bar 2 3)
+    [[ "$result" =~ ^\[[#]{7}[-]{4}\]\ \[\ 66%\]$ ]]
+    
+    # Test very small progress
+    result=$(lib_msg_progress_bar 1 1000)
+    [[ "$result" =~ ^\[[-]{11}\]\ \[\ \ 0%\]$ ]]
+    
+    # Test near-complete progress
+    result=$(lib_msg_progress_bar 999 1000)
+    [[ "$result" =~ ^\[[#]{10}[-]{1}\]\ \[\ 99%\]$ ]]
+}
+
+@test "lib_msg_progress_bar should work with various custom character combinations" {
+    # Test with Unicode characters
+    result=$(lib_msg_progress_bar 50 100 20 "█" "░")
+    [[ "$result" =~ ^\[█{5}░{6}\]\ \[\ 50%\]$ ]]
+    
+    # Test with multi-character strings (uses entire string repeatedly)
+    result=$(lib_msg_progress_bar 50 100 20 "abc" "xyz")
+    [[ "$result" =~ ^\[(abc){5}(xyz){6}\]\ \[\ 50%\]$ ]]
+    
+    # Test with special characters
+    result=$(lib_msg_progress_bar 25 100 20 "*" ".")
+    [[ "$result" =~ ^\[\*{2}\.{9}\]\ \[\ 25%\]$ ]]
+    
+    # Test with same fill and empty characters
+    result=$(lib_msg_progress_bar 50 100 20 "X" "X")
+    [[ "$result" =~ ^\[X{11}\]\ \[\ 50%\]$ ]]
+}
+
+@test "lib_msg_progress_bar should maintain consistent behavior across percentage ranges" {
+    local -a test_cases=(
+        "0:100:0"      # 0%
+        "1:100:1"      # 1%
+        "25:100:25"    # 25%
+        "33:100:33"    # 33%
+        "50:100:50"    # 50%
+        "67:100:67"    # 67%
+        "75:100:75"    # 75%
+        "99:100:99"    # 99%
+        "100:100:100"  # 100%
+    )
+    
+    for test_case in "${test_cases[@]}"; do
+        IFS=':' read -r current max expected_percent <<< "$test_case"
+        result=$(lib_msg_progress_bar "$current" "$max")
+        
+        # Verify length is always 20
+        [[ ${#result} -eq 20 ]]
+        
+        # Verify format matches expected pattern
+        [[ "$result" =~ ^\[[#-]{11}\]\ \[\ *[0-9]{1,3}%\]$ ]]
+        
+        # Extract actual percentage from result
+        actual_percent=$(echo "$result" | sed 's/.*\[ *\([0-9]*\)%\].*/\1/')
+        [[ "$actual_percent" -eq "$expected_percent" ]]
+    done
+}
+
+@test "lib_msg_progress_bar should format padding correctly for all percentage ranges" {
+  # Test specific padding patterns for edge cases in current format: [progress] [percentage%]
+  
+  # Test 0% (should have 2 spaces inside brackets: "[  0%]")
+  result_0=$(lib_msg_progress_bar 0 100)
+  [[ "$result_0" =~ \]\ \[\ \ 0%\]$ ]]
+  
+  # Test 9% (should have 2 spaces inside brackets: "[  9%]")
+  result_9=$(lib_msg_progress_bar 9 100)
+  [[ "$result_9" =~ \]\ \[\ \ 9%\]$ ]]
+  
+  # Test 10% (should have 1 space inside brackets: "[ 10%]")
+  result_10=$(lib_msg_progress_bar 10 100)
+  [[ "$result_10" =~ \]\ \[\ 10%\]$ ]]
+  
+  # Test 99% (should have 1 space inside brackets: "[ 99%]")
+  result_99=$(lib_msg_progress_bar 99 100)
+  [[ "$result_99" =~ \]\ \[\ 99%\]$ ]]
+  
+  # Test 100% (should have no space inside brackets: "[100%]")
+  result_100=$(lib_msg_progress_bar 100 100)
+  [[ "$result_100" =~ \]\ \[100%\]$ ]]
+}
+
+@test "lib_msg_progress_bar should work with custom characters and maintain length consistency" {
+  # Test that length consistency is maintained even with custom progress/empty characters
+  
+  # Test with custom characters
+  result_0=$(lib_msg_progress_bar 0 10 20 ">" " ")
+  result_50=$(lib_msg_progress_bar 5 10 20 ">" " ")
+  result_100=$(lib_msg_progress_bar 10 10 20 ">" " ")
+  
+  # All should have same total length
+  len_0=${#result_0}
+  len_50=${#result_50}
+  len_100=${#result_100}
+  
+  [ "$len_0" -eq "$len_50" ]
+  [ "$len_50" -eq "$len_100" ]
+  
+  # Should still have proper padding format in brackets
+  [[ "$result_0" =~ \]\ \[\ \ 0%\]$ ]]
+  [[ "$result_50" =~ \]\ \[\ 50%\]$ ]]
+  [[ "$result_100" =~ \]\ \[100%\]$ ]]
+  
+  # For debugging
+  echo "Custom char results: '$result_0', '$result_50', '$result_100'" >&3
+}
+
+@test "lib_msg_progress_bar should handle edge cases while maintaining length consistency" {
+  # Test edge cases that previously caused length inconsistencies
+  
+  # Test with very small total
+  result_small_0=$(lib_msg_progress_bar 0 1)
+  result_small_100=$(lib_msg_progress_bar 1 1)
+  
+  len_small_0=${#result_small_0}
+  len_small_100=${#result_small_100}
+  
+  [ "$len_small_0" -eq "$len_small_100" ]
+  
+  # Test with larger numbers that still result in same percentages
+  result_large_0=$(lib_msg_progress_bar 0 1000)
+  result_large_50=$(lib_msg_progress_bar 500 1000)
+  result_large_100=$(lib_msg_progress_bar 1000 1000)
+  
+  len_large_0=${#result_large_0}
+  len_large_50=${#result_large_50}
+  len_large_100=${#result_large_100}
+  
+  [ "$len_large_0" -eq "$len_large_50" ]
+  [ "$len_large_50" -eq "$len_large_100" ]
+  
+  # Different scales should still have same length for same percentages
+  [ "$len_small_0" -eq "$len_large_0" ]
+  [ "$len_small_100" -eq "$len_large_100" ]
 }
 
 # ========================================================================

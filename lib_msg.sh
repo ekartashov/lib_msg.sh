@@ -1223,7 +1223,7 @@ lib_msg_create_prefix() {
 lib_msg_progress_bar() {
     _current="$1"
     _max="$2"
-    _width="${3:-20}"
+    _width="${3:-0}"
     _filled_char="${4:-#}"
     _empty_char="${5:--}"
     
@@ -1233,9 +1233,29 @@ lib_msg_progress_bar() {
     if [ "$_current" -gt "$_max" ]; then _current="$_max"; fi
     if [ "$_width" -le 0 ]; then _width=20; fi
     
-    # Calculate filled portion
-    _filled_count=$(( _current * _width / _max ))
-    _empty_count=$(( _width - _filled_count ))
+    # Calculate percentage
+    _percent=$(( _current * 100 / _max ))
+    
+    # Calculate padding spaces for right-aligned percentage text
+    # Always reserve 4 characters for "100%" and pad shorter percentages
+    if [ "$_percent" -ge 100 ]; then
+        _percent_padding=""     # 1 space for "100%"
+    elif [ "$_percent" -ge 10 ]; then
+        _percent_padding=" "    # 2 spaces for "10%" to "99%"
+    else
+        _percent_padding="  "   # 3 spaces for "0%" to "9%"
+    fi
+    
+    # The width parameter specifies the total output width
+    # Total output width will be content_width + 9 (for brackets, space, and percentage)
+    _bar_content_width="$((_width - 9))"
+    
+    # Ensure minimum bar width
+    if [ "$_bar_content_width" -lt 1 ]; then _bar_content_width=1; fi
+    
+    # Calculate filled portion based on adjusted width
+    _filled_count=$(( _current * _bar_content_width / _max ))
+    _empty_count=$(( _bar_content_width - _filled_count ))
     
     # Generate progress bar
     _progress=""
@@ -1254,9 +1274,6 @@ lib_msg_progress_bar() {
         _i=$(( _i + 1 ))
     done
     
-    # Calculate percentage
-    _percent=$(( _current * 100 / _max ))
-    
-    # Return formatted progress bar
-    printf "[%s] %d%%" "$_progress" "$_percent"
+    # Return formatted progress bar with right-aligned percentage
+    printf "[%s] [%s%d%%]" "$_progress" "$_percent_padding" "$_percent"
 }

@@ -460,3 +460,114 @@ test_prompt_yn_with_input() {
     rm -f "$temp_file"
     [ "$tag_check" -eq 0 ]
 }
+# ========================================================================
+# --- Text Wrapping Tests ---
+# ========================================================================
+
+@test "lib_msg_prompt_yn(): long text wraps with proper indentation like other functions" {
+    # Set up TTY simulation with narrow terminal width
+    simulate_tty_conditions 0 0  # Both stdout and stderr are TTY
+    export COLUMNS=80
+    _lib_msg_force_reinit  # Reinitialize to pick up new COLUMNS
+    
+    # Long text that should wrap
+    local long_text="Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book."
+    
+    # Capture output from lib_msg_prompt_yn
+    local temp_file=$(mktemp)
+    {
+        printf "n\n" | lib_msg_prompt_yn "$long_text" "" "n" || true
+    } > "$temp_file" 2>/dev/null
+    
+    # Check that output contains line breaks (indicating wrapping occurred)
+    local line_count=$(wc -l < "$temp_file")
+    
+    # Also check that subsequent lines are properly indented
+    # Look for lines that start with whitespace (indicating continuation lines)
+    local indented_lines=$(grep -c "^[[:space:]]\+" "$temp_file" || echo "0")
+    
+    rm -f "$temp_file"
+    
+    # Should have multiple lines due to wrapping
+    [ "$line_count" -gt 1 ]
+    
+    # Should have indented continuation lines
+    [ "$indented_lines" -gt 0 ]
+}
+
+@test "lib_msg_prompt_yn(): wrapping behavior matches err() function pattern" {
+    # Set up TTY simulation with narrow terminal width
+    simulate_tty_conditions 0 0  # Both stdout and stderr are TTY
+    export COLUMNS=80
+    _lib_msg_force_reinit  # Reinitialize to pick up new COLUMNS
+    
+    # Long text that should wrap
+    local long_text="Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text."
+    
+    # Capture output from both functions
+    local prompt_file=$(mktemp)
+    local err_file=$(mktemp)
+    
+    {
+        printf "n\n" | lib_msg_prompt_yn "$long_text" "" "n" || true
+    } > "$prompt_file" 2>/dev/null
+    
+    {
+        err "$long_text"
+    } > "$err_file" 2>&1
+    
+    # Extract indentation pattern from both files
+    # Both should show similar indentation for continuation lines
+    local prompt_indent=$(grep "^[[:space:]]\+" "$prompt_file" | head -1 | sed 's/[^[:space:]].*//' | wc -c)
+    local err_indent=$(grep "^[[:space:]]\+" "$err_file" | head -1 | sed 's/[^[:space:]].*//' | wc -c)
+    
+    rm -f "$prompt_file" "$err_file"
+    
+    # Both should use similar indentation (within a few characters due to different prefixes)
+    local indent_diff=$((prompt_indent > err_indent ? prompt_indent - err_indent : err_indent - prompt_indent))
+    [ "$indent_diff" -le 5 ]  # Allow small differences due to different prefix lengths
+}
+
+@test "lib_msg_prompt_yn(): no wrapping when not TTY" {
+    # Set up non-TTY environment (no wrapping should occur)
+    simulate_tty_conditions 1 1  # Neither stdout nor stderr are TTY
+    export COLUMNS=80
+    _lib_msg_force_reinit
+    
+    # Long text
+    local long_text="Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text."
+    
+    # Capture output
+    local temp_file=$(mktemp)
+    {
+        printf "n\n" | lib_msg_prompt_yn "$long_text" "" "n" || true
+    } > "$temp_file" 2>/dev/null
+    
+    # Should be on a single line when not TTY
+    # Note: wc -l counts newlines, not lines. Since prompt doesn't end with newline,
+    # we need to check if there are 0 newlines (meaning single line) OR 1 newline
+    local line_count=$(wc -l < "$temp_file")
+    local has_content=$(test -s "$temp_file" && echo "1" || echo "0")
+    
+    rm -f "$temp_file"
+    
+    # Should have content but no internal line breaks (0 or 1 newlines max)
+    [ "$has_content" -eq 1 ] && [ "$line_count" -le 1 ]
+}
+
+@test "lib_msg_prompt_yn(): preserves exit code behavior after wrapping fix" {
+    # Set up TTY simulation with wrapping conditions
+    simulate_tty_conditions 0 0  # Both stdout and stderr are TTY
+    export COLUMNS=80
+    _lib_msg_force_reinit
+    
+    # Long text that will wrap
+    local long_text="Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text."
+    
+    # Test that exit codes still work correctly with wrapping
+    run test_prompt_yn_with_input "y" lib_msg_prompt_yn "$long_text" "" "n"
+    [ "$status" -eq 0 ]  # Should return 0 for 'y' input
+    
+    run test_prompt_yn_with_input "n" lib_msg_prompt_yn "$long_text" "" "y"
+    [ "$status" -eq 1 ]  # Should return 1 for 'n' input
+}

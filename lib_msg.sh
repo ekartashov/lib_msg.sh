@@ -1079,8 +1079,12 @@ lib_msg_prompt_yn() {
         _styled_prompt_text="$_prompt_text"
     fi
     
-    # Format the complete prompt with script name prefix and new display format
-    printf "%s%s%s %s: " "${SCRIPT_NAME:-lib_msg.sh}: " "$_prefix_tag" "$_styled_prompt_text" "$_display_format"
+    # Construct the complete prompt message for text wrapping
+    _complete_prompt_message="${_styled_prompt_text} ${_display_format}: "
+    
+    # Use _print_msg_core for consistent text wrapping with other functions
+    # This ensures the prompt text wraps properly like err(), msg(), etc.
+    _print_msg_core "$_complete_prompt_message" "${SCRIPT_NAME:-lib_msg.sh}: ${_prefix_tag}" "false" "true"
     
     # Read input directly
     read -r _answer

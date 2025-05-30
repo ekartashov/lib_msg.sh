@@ -329,117 +329,103 @@ _lib_msg_wrap_text_sh() {
     # Replace newlines with spaces
     _text_to_wrap="$(_lib_msg_tr_newline_to_space "$_text_to_wrap")"
     
-    # Optimization: Store results in an array-like structure using numbered variables
-    # This avoids expensive string concatenation in tight loops
-    _result_count=0
+    # Use simple and reliable IFS-based word splitting to avoid infinite loops
+    _result_lines=""
     _current_line=""
+    _current_line_len=0
     
-    # Process words
-    _old_ifs="$IFS"
+    # Save original IFS and set to space for word splitting
+    _old_IFS="$IFS"
     IFS=' '
-    # shellcheck disable=SC2086 # Word splitting is desired here
+    
+    # Split text into words using IFS
     set -- $_text_to_wrap
-    IFS="$_old_ifs"
     
-    # Handle empty input after tokenization
-    if [ $# -eq 0 ]; then
-        printf "%s" ""
-        return
-    fi
+    # Restore original IFS
+    IFS="$_old_IFS"
     
-    # Main word processing loop
-    _first_in_line=true
-    for _word; do
-        _word_len=${#_word}
-        _current_line_len=${#_current_line}
+    # Process each word
+    for _word in "$@"; do
+        # Skip empty words
+        if [ -z "$_word" ]; then
+            continue
+        fi
         
-        # Special case: oversized word that needs splitting
+        _word_len=${#_word}
+        
+        # Quick check: if word is longer than max width, handle separately
         if [ "$_word_len" -gt "$_max_width" ]; then
             # Add current line to results if not empty
             if [ -n "$_current_line" ]; then
-                eval "_result_${_result_count}=\"\$_current_line\""
-                _result_count=$((_result_count + 1))
+                if [ -z "$_result_lines" ]; then
+                    _result_lines="$_current_line"
+                else
+                    _result_lines="${_result_lines}${_LIB_MSG_RS}${_current_line}"
+                fi
                 _current_line=""
+                _current_line_len=0
             fi
             
-            # OPTIMIZATION: Process oversized word in chunks of max_width
-            # instead of character by character
+            # OPTIMIZATION: Use efficient oversized word splitting with substr simulation
             _remaining_word="$_word"
-            
-            # POSIX-compliant approach for chunking
             while [ "${#_remaining_word}" -gt "$_max_width" ]; do
-                # Extract first $_max_width characters using head/cut approach
-                # but with pure parameter expansion for performance
-                _i=0
-                _chunk=""
+                # Extract chunk using printf precision - this is reliable and fast
+                _chunk=$(printf "%.${_max_width}s" "$_remaining_word")
                 
-                # Build chunk max_width characters at a time
-                while [ "$_i" -lt "$_max_width" ]; do
-                    _chunk="$_chunk${_remaining_word%"${_remaining_word#?}"}"
-                    _remaining_word="${_remaining_word#?}"
-                    _i=$((_i + 1))
-                done
+                # Add chunk to results
+                if [ -z "$_result_lines" ]; then
+                    _result_lines="$_chunk"
+                else
+                    _result_lines="${_result_lines}${_LIB_MSG_RS}${_chunk}"
+                fi
                 
-                # Store the chunk
-                eval "_result_${_result_count}=\"\$_chunk\""
-                _result_count=$((_result_count + 1))
+                # Remove processed chunk from remaining word
+                _remaining_word="${_remaining_word#"$_chunk"}"
             done
             
             # Handle the last piece of the word if any
             if [ -n "$_remaining_word" ]; then
                 _current_line="$_remaining_word"
-                _first_in_line=false
-            else
-                _current_line=""
-                _first_in_line=true
+                _current_line_len=${#_remaining_word}
             fi
             continue
         fi
         
+        # OPTIMIZATION: Calculate new length once and reuse
+        _new_line_len=$((_current_line_len + 1 + _word_len))
+        
         # Normal case: word fits or starts a new line
-        if $_first_in_line; then
+        if [ -z "$_current_line" ]; then
+            # First word on line
             _current_line="$_word"
-            _first_in_line=false
-        elif [ $((_current_line_len + 1 + _word_len)) -le "$_max_width" ]; then
+            _current_line_len="$_word_len"
+        elif [ "$_new_line_len" -le "$_max_width" ]; then
             # Word fits on current line with a space
             _current_line="$_current_line $_word"
+            _current_line_len="$_new_line_len"
         else
             # Word would overflow, start a new line
-            eval "_result_${_result_count}=\"\$_current_line\""
-            _result_count=$((_result_count + 1))
+            if [ -z "$_result_lines" ]; then
+                _result_lines="$_current_line"
+            else
+                _result_lines="${_result_lines}${_LIB_MSG_RS}${_current_line}"
+            fi
             _current_line="$_word"
+            _current_line_len="$_word_len"
         fi
     done
     
     # Add the last line if not empty
     if [ -n "$_current_line" ]; then
-        eval "_result_${_result_count}=\"\$_current_line\""
-        _result_count=$((_result_count + 1))
-    fi
-    
-    # Build final result with record separators
-    if [ "$_result_count" -eq 0 ]; then
-        printf "%s" ""
-        return
-    fi
-    
-    # OPTIMIZATION: Build result string once, not incrementally
-    _final_result=""
-    _i=0
-    
-    while [ "$_i" -lt "$_result_count" ]; do
-        eval "_line=\"\$_result_${_i}\""
-        
-        if [ "$_i" -eq 0 ]; then
-            _final_result="$_line"
+        if [ -z "$_result_lines" ]; then
+            _result_lines="$_current_line"
         else
-            _final_result="${_final_result}${_LIB_MSG_RS}${_line}"
+            _result_lines="${_result_lines}${_LIB_MSG_RS}${_current_line}"
         fi
-        
-        _i=$((_i + 1))
-    done
+    fi
     
-    printf "%s" "$_final_result"
+    # Return the result
+    printf "%s" "$_result_lines"
 }
 
 
@@ -449,35 +435,21 @@ _lib_msg_tr_newline_to_space() {
     
     # Fast path: if no newlines, just return the input
     case "$_input" in
-        *$'\n'*) : ;; # Contains newlines, continue with processing
+        *"$_LIB_MSG_NL"*) : ;; # Contains newlines, continue with processing
         *) printf '%s' "$_input"; return ;; # No newlines, return input as is
     esac
     
-    # For the specific test case with only newlines
-    # Hardcode the expected output for the test input
-    if [ "$_input" = "
-" ] || [ "$_input" = $'\n\n' ]; then
-        printf "  "
-        return
-    fi
+    # OPTIMIZATION: Use simple substitution approach for reliability and speed
+    # This handles all edge cases correctly while still being fast
+    _result="$_input"
     
-    # Use parameter expansion to efficiently handle newlines
-    # First split the input into lines
-    local _old_IFS="$IFS"
-    IFS=$'\n'
-    # Create an array of lines using positional parameters
-    set -- $_input
-    IFS="$_old_IFS"
-    
-    # Join the lines with spaces using printf
-    _first=1
-    for _line; do
-        if [ "$_first" -eq 1 ]; then
-            _result="$_line"
-            _first=0
-        else
-            _result="${_result} ${_line}"
-        fi
+    # Replace all newlines with spaces using a simple loop
+    # This preserves empty segments correctly (newline -> space)
+    while [ "$_result" != "${_result#*"$_LIB_MSG_NL"}" ]; do
+        # Replace first newline with space
+        _before="${_result%%"$_LIB_MSG_NL"*}"
+        _after="${_result#*"$_LIB_MSG_NL"}"
+        _result="${_before} ${_after}"
     done
     
     printf '%s' "$_result"
@@ -493,20 +465,43 @@ _lib_msg_tr_remove_whitespace() {
         *) printf '%s' "$_input"; return ;; # No whitespace, return input as is
     esac
     
-    # Use pure POSIX shell implementation to remove all whitespace
+    # OPTIMIZATION: Use chunk processing instead of character-by-character
+    # This is much faster for large inputs
     _result=""
     _remaining="$_input"
     
-    # Process character by character, skipping whitespace
+    # Process by removing each type of whitespace systematically
+    # This avoids the expensive character-by-character loop
     while [ -n "$_remaining" ]; do
-        # Extract first character
-        _char="${_remaining%"${_remaining#?}"}"
-        _remaining="${_remaining#?}"
-        
-        # Check if character is whitespace using case pattern
-        case "$_char" in
-            [[:space:]]) : ;; # Skip whitespace characters
-            *) _result="${_result}${_char}" ;; # Keep non-whitespace
+        case "$_remaining" in
+            *[[:space:]]*)
+                # Find first whitespace character and split around it
+                # Use parameter expansion to efficiently skip whitespace chunks
+                
+                # Handle leading whitespace first
+                case "$_remaining" in
+                    [[:space:]]*)
+                        # Remove leading whitespace characters
+                        while [ -n "$_remaining" ]; do
+                            case "$_remaining" in
+                                [[:space:]]*) _remaining="${_remaining#?}" ;;
+                                *) break ;;
+                            esac
+                        done
+                        ;;
+                    *)
+                        # Extract chunk before next whitespace
+                        _chunk="${_remaining%%[[:space:]]*}"
+                        _result="${_result}${_chunk}"
+                        _remaining="${_remaining#"$_chunk"}"
+                        ;;
+                esac
+                ;;
+            *)
+                # No more whitespace, append remainder
+                _result="${_result}${_remaining}"
+                _remaining=""
+                ;;
         esac
     done
     

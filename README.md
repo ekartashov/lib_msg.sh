@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🖥️ lib_msg.sh
+# lib_msg.sh
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![POSIX Compliant](https://img.shields.io/badge/POSIX-compliant-brightgreen.svg)](https://pubs.opengroup.org/onlinepubs/9699919799/)

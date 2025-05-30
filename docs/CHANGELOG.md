@@ -22,6 +22,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved shell implementation performance to exceed sed implementation
 - Simplified codebase by removing sed implementation for ANSI stripping
 - Enhanced test suite with comprehensive progress bar edge case coverage
+- **Major Performance Improvements**: Achieved dramatic performance gains across all core text processing functions
+  - Text wrapping function: 12.5x performance improvement (9,820ms → 786ms for 5K characters)
+  - Whitespace removal function: 31x performance improvement (8,596ms → 275ms for 5K characters)
+  - End-to-end text processing: 3.8x performance improvement (1,445ms → 379ms for 1K characters)
+- Replaced character-by-character processing with efficient chunk-based algorithms
+- Optimized text wrapping with pre-computed line lengths and efficient oversized word splitting
+- Implemented fast-path optimizations for inputs without special characters
 
 ### Fixed
 - Resolved all tr command dependencies with optimized pure shell implementations
@@ -30,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed POSIX shell compatibility by eliminating bash-specific parameter expansions
 - Resolved "Bad substitution" errors in strict POSIX shell environments
 - Improved `lib_msg_prompt_yn` API design by switching from string output to shell exit codes
+- Eliminated O(n²) complexity bottlenecks in text processing functions
 
 ## [1.2.1] - 2025-05-15
 

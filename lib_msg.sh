@@ -267,11 +267,11 @@ _lib_msg_strip_ansi_shell() {
                             ${_seq_pattern}[a-zA-Z]*)
                                 # Extract up to and including the command character
                                 _cmd_part="${_input%%[a-zA-Z]*}"
-                                _cmd_char="${_input#${_cmd_part}}"
+                                _cmd_char="${_input#"${_cmd_part}"}"
                                 _cmd_char="${_cmd_char%"${_cmd_char#?}"}"
                                 
                                 # Remove the ANSI sequence from input
-                                _input="${_input#${_cmd_part}${_cmd_char}}"
+                                _input="${_input#"${_cmd_part}""${_cmd_char}"}"
                                 ;;
                             *)
                                 # No command character found, preserve ESC[ literally
@@ -339,6 +339,7 @@ _lib_msg_wrap_text_sh() {
     IFS=' '
     
     # Split text into words using IFS
+    # shellcheck disable=SC2086 # Intentional word splitting
     set -- $_text_to_wrap
     
     # Restore original IFS

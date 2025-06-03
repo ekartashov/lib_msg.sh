@@ -314,6 +314,7 @@ _lib_msg_strip_ansi() {
 _lib_msg_wrap_text_sh() {
     _text_to_wrap="$1"
     _max_width="$2"
+    _max_wrap_length="${3:-0}"  # Optional third parameter, default 0 (unlimited)
     
     # Early returns for special cases
     if [ -z "$_text_to_wrap" ]; then
@@ -326,6 +327,11 @@ _lib_msg_wrap_text_sh() {
         return
     fi
     
+    # Validate max_wrap_length parameter (negative values mean unlimited)
+    if [ "$_max_wrap_length" -lt 0 ]; then
+        _max_wrap_length=0  # Treat negative as unlimited
+    fi
+    
     # Replace newlines with spaces
     _text_to_wrap="$(_lib_msg_tr_newline_to_space "$_text_to_wrap")"
     
@@ -333,6 +339,7 @@ _lib_msg_wrap_text_sh() {
     _result_lines=""
     _current_line=""
     _current_line_len=0
+    _total_output_len=0  # Track total output length for max_wrap_length
     
     # Save original IFS and set to space for word splitting
     _old_IFS="$IFS"
@@ -354,14 +361,58 @@ _lib_msg_wrap_text_sh() {
         
         _word_len=${#_word}
         
+        # Check max_wrap_length before processing this word
+        if [ "$_max_wrap_length" -gt 0 ]; then
+            # Calculate what the total length would be if we add this word to current line
+            _potential_current_line_len=$((_current_line_len + _word_len))
+            if [ -n "$_current_line" ]; then
+                _potential_current_line_len=$((_potential_current_line_len + 1))  # Account for space
+            fi
+            
+            # Calculate what total output length would be with this expanded current line
+            _potential_total_len="$_total_output_len"
+            if [ -n "$_result_lines" ]; then
+                _potential_total_len=$((_potential_total_len + 1))  # Account for RS before current line
+            fi
+            _potential_total_len=$((_potential_total_len + _potential_current_line_len))
+            
+            # If adding this word would exceed max_wrap_length, truncate and break
+            if [ "$_potential_total_len" -gt "$_max_wrap_length" ]; then
+                # Try to fit part of the word if there's space
+                _remaining_space=$((_max_wrap_length - _total_output_len))
+                if [ -n "$_result_lines" ]; then
+                    _remaining_space=$((_remaining_space - 1))  # Account for record separator
+                fi
+                _remaining_space=$((_remaining_space - _current_line_len))
+                if [ -n "$_current_line" ]; then
+                    _remaining_space=$((_remaining_space - 1))  # Account for space before word
+                fi
+                
+                if [ "$_remaining_space" -gt 0 ] && [ "$_remaining_space" -le "$_word_len" ]; then
+                    # Truncate the word to fit remaining space
+                    _truncated_word=$(printf "%.${_remaining_space}s" "$_word")
+                    
+                    # Add truncated word to current line
+                    if [ -z "$_current_line" ]; then
+                        _current_line="$_truncated_word"
+                    else
+                        _current_line="$_current_line $_truncated_word"
+                    fi
+                fi
+                break  # Stop processing more words
+            fi
+        fi
+        
         # Quick check: if word is longer than max width, handle separately
         if [ "$_word_len" -gt "$_max_width" ]; then
             # Add current line to results if not empty
             if [ -n "$_current_line" ]; then
                 if [ -z "$_result_lines" ]; then
                     _result_lines="$_current_line"
+                    _total_output_len=${#_current_line}
                 else
                     _result_lines="${_result_lines}${_LIB_MSG_RS}${_current_line}"
+                    _total_output_len=$((_total_output_len + 1 + ${#_current_line}))  # +1 for RS
                 fi
                 _current_line=""
                 _current_line_len=0
@@ -370,14 +421,43 @@ _lib_msg_wrap_text_sh() {
             # OPTIMIZATION: Use efficient oversized word splitting with substr simulation
             _remaining_word="$_word"
             while [ "${#_remaining_word}" -gt "$_max_width" ]; do
+                # Check max_wrap_length before adding more chunks
+                if [ "$_max_wrap_length" -gt 0 ]; then
+                    _chunk_len="$_max_width"
+                    _potential_len=$((_total_output_len + _chunk_len))
+                    if [ -n "$_result_lines" ]; then
+                        _potential_len=$((_potential_len + 1))  # Account for RS
+                    fi
+                    
+                    if [ "$_potential_len" -gt "$_max_wrap_length" ]; then
+                        # Calculate how much space is left
+                        _remaining_space=$((_max_wrap_length - _total_output_len))
+                        if [ -n "$_result_lines" ]; then
+                            _remaining_space=$((_remaining_space - 1))  # Account for RS
+                        fi
+                        
+                        if [ "$_remaining_space" -gt 0 ]; then
+                            _chunk=$(printf "%.${_remaining_space}s" "$_remaining_word")
+                            if [ -z "$_result_lines" ]; then
+                                _result_lines="$_chunk"
+                            else
+                                _result_lines="${_result_lines}${_LIB_MSG_RS}${_chunk}"
+                            fi
+                        fi
+                        break  # Stop processing due to length limit
+                    fi
+                fi
+                
                 # Extract chunk using printf precision - this is reliable and fast
                 _chunk=$(printf "%.${_max_width}s" "$_remaining_word")
                 
                 # Add chunk to results
                 if [ -z "$_result_lines" ]; then
                     _result_lines="$_chunk"
+                    _total_output_len=${#_chunk}
                 else
                     _result_lines="${_result_lines}${_LIB_MSG_RS}${_chunk}"
+                    _total_output_len=$((_total_output_len + 1 + ${#_chunk}))  # +1 for RS
                 fi
                 
                 # Remove processed chunk from remaining word
@@ -386,6 +466,19 @@ _lib_msg_wrap_text_sh() {
             
             # Handle the last piece of the word if any
             if [ -n "$_remaining_word" ]; then
+                # Check if adding this piece would exceed max_wrap_length
+                if [ "$_max_wrap_length" -gt 0 ]; then
+                    _potential_len=$((_total_output_len + ${#_remaining_word}))
+                    if [ -n "$_result_lines" ]; then
+                        _potential_len=$((_potential_len + 1))  # Account for RS if this becomes a new line
+                    fi
+                    
+                    if [ "$_potential_len" -gt "$_max_wrap_length" ]; then
+                        # Skip this piece as it would exceed the limit
+                        break
+                    fi
+                fi
+                
                 _current_line="$_remaining_word"
                 _current_line_len=${#_remaining_word}
             fi
@@ -408,9 +501,21 @@ _lib_msg_wrap_text_sh() {
             # Word would overflow, start a new line
             if [ -z "$_result_lines" ]; then
                 _result_lines="$_current_line"
+                _total_output_len=${#_current_line}
             else
                 _result_lines="${_result_lines}${_LIB_MSG_RS}${_current_line}"
+                _total_output_len=$((_total_output_len + 1 + ${#_current_line}))  # +1 for RS
             fi
+            
+            # Before starting new line with this word, check max_wrap_length
+            if [ "$_max_wrap_length" -gt 0 ]; then
+                _potential_new_len=$((_total_output_len + 1 + _word_len))  # +1 for RS
+                if [ "$_potential_new_len" -gt "$_max_wrap_length" ]; then
+                    # Adding this word as a new line would exceed limit, truncate current result
+                    break
+                fi
+            fi
+            
             _current_line="$_word"
             _current_line_len="$_word_len"
         fi
@@ -418,10 +523,43 @@ _lib_msg_wrap_text_sh() {
     
     # Add the last line if not empty
     if [ -n "$_current_line" ]; then
-        if [ -z "$_result_lines" ]; then
-            _result_lines="$_current_line"
+        # Check max_wrap_length before adding the final line
+        if [ "$_max_wrap_length" -gt 0 ]; then
+            _potential_len=$((_total_output_len + ${#_current_line}))
+            if [ -n "$_result_lines" ]; then
+                _potential_len=$((_potential_len + 1))  # Account for RS
+            fi
+            
+            if [ "$_potential_len" -gt "$_max_wrap_length" ]; then
+                # Truncate the final line to fit within max_wrap_length
+                _remaining_space=$((_max_wrap_length - _total_output_len))
+                if [ -n "$_result_lines" ]; then
+                    _remaining_space=$((_remaining_space - 1))  # Account for RS
+                fi
+                
+                if [ "$_remaining_space" -gt 0 ]; then
+                    _truncated_line=$(printf "%.${_remaining_space}s" "$_current_line")
+                    if [ -z "$_result_lines" ]; then
+                        _result_lines="$_truncated_line"
+                    else
+                        _result_lines="${_result_lines}${_LIB_MSG_RS}${_truncated_line}"
+                    fi
+                fi
+            else
+                # Final line fits within limit
+                if [ -z "$_result_lines" ]; then
+                    _result_lines="$_current_line"
+                else
+                    _result_lines="${_result_lines}${_LIB_MSG_RS}${_current_line}"
+                fi
+            fi
         else
-            _result_lines="${_result_lines}${_LIB_MSG_RS}${_current_line}"
+            # No max_wrap_length limit
+            if [ -z "$_result_lines" ]; then
+                _result_lines="$_current_line"
+            else
+                _result_lines="${_result_lines}${_LIB_MSG_RS}${_current_line}"
+            fi
         fi
     fi
     
@@ -514,6 +652,7 @@ _lib_msg_tr_remove_whitespace() {
 _lib_msg_wrap_text() {
     _text_to_wrap="$1"
     _max_width="$2"
+    _max_wrap_length="${3:-0}"  # Optional third parameter, default 0 (unlimited)
     
     # Handle the special case of empty input or only whitespace
     if [ -z "$_text_to_wrap" ]; then
@@ -536,7 +675,7 @@ _lib_msg_wrap_text() {
     fi
     
     # Use the pure shell implementation (for optimal performance)
-    _result=$(_lib_msg_wrap_text_sh "$_text_to_wrap" "$_max_width")
+    _result=$(_lib_msg_wrap_text_sh "$_text_to_wrap" "$_max_width" "$_max_wrap_length")
     
     # Return the RS-delimited string
     printf "%s" "$_result"
@@ -903,11 +1042,12 @@ lib_msg_strip_ansi() {
 }
 
 # Wrap text to specified width using newlines, respecting terminal width if width=0
-# Args: $1 = text to wrap, $2 = max width (0 for terminal width)
+# Args: $1 = text to wrap, $2 = max width (0 for terminal width), $3 = max wrap length (optional, 0 = unlimited)
 # Returns: wrapped text with newlines
 lib_msg_get_wrapped_text() {
     _text="$1"
     _width="$2"
+    _max_wrap_length="${3:-0}"  # Optional third parameter, default 0 (unlimited)
     
     # Handle case where caller wants to use terminal width
     if [ "$_width" -eq 0 ]; then
@@ -920,7 +1060,7 @@ lib_msg_get_wrapped_text() {
     fi
     
     # Get wrapped text as RS-delimited string
-    _wrapped_text=$(_lib_msg_wrap_text "$_text" "$_width")
+    _wrapped_text=$(_lib_msg_wrap_text "$_text" "$_width" "$_max_wrap_length")
     
     # Convert RS to newlines for public API
     if [ -z "$_wrapped_text" ]; then

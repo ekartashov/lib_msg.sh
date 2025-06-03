@@ -405,18 +405,19 @@ echo "Length: ${#plain_text} characters"
 
 ### `lib_msg_get_wrapped_text`
 
-Wraps text to a specified width, or to terminal width if width is 0.
+Wraps text to a specified width, or to terminal width if width is 0. Optionally limits total output length to prevent stalls with extremely long inputs.
 
 **Usage:**
 ```sh
-lib_msg_get_wrapped_text <text> <width>
+lib_msg_get_wrapped_text <text> <width> [max_wrap_length]
 ```
 
 **Parameters:**
 - `text`: The text to wrap
 - `width`: Maximum width in characters (use 0 to use terminal width)
+- `max_wrap_length`: Optional maximum total character limit for wrapped output (prevents stalls with very long inputs)
 
-**Returns:** The input text wrapped to the specified width with newlines.
+**Returns:** The input text wrapped to the specified width with newlines, truncated if max_wrap_length is exceeded.
 
 **Example:**
 ```sh
@@ -428,6 +429,10 @@ echo "$wrapped_text"
 # Wrap text to terminal width
 auto_wrapped=$(lib_msg_get_wrapped_text "$long_text" 0)
 echo "$auto_wrapped"
+
+# Wrap text with maximum output length limit (prevents stalls)
+safe_wrapped=$(lib_msg_get_wrapped_text "$very_long_input" 60 1000)
+echo "$safe_wrapped"  # Output limited to 1000 characters maximum
 ```
 
 ## Custom Message Output Functions

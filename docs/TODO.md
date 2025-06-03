@@ -12,6 +12,6 @@
 - [x] Revisit lib_msg.sh functions that use tr or any other non-shell intergrated commands --- we want to get rid of them and have only shell-only implementation
 - [X] Reorganize tests so they are numbered correctly while letting performance tests be last (like set them to 50, so there's place for other test files to be added)
 - [X] Update examples/public_api_demo.sh to use all the new functionality used in lib_msg.sh while updating the documentation to be coherent with the changesz
-- [] Add max wrap length (to prevent stalls)
+- [x] Add max wrap length (to prevent stalls)
 - [] Check wether further optimizations are possible
 - [] Check wether optional external cmds is feasible

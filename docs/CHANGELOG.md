@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Enhanced troubleshooting documentation
 - Performance testing infrastructure for benchmarking implementations
 - Comprehensive test coverage for progress bar function with edge cases
+- **Max wrap length feature**: Added optional parameter to text wrapping functions to prevent stalls with extremely long inputs
 
 ### Changed
 - Achieved pure POSIX shell implementation by eliminating all tr command dependencies

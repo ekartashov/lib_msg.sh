@@ -60,6 +60,7 @@ Add `lib_msg.sh` to your project with a single command with one of the ways that
 - Clone the repository with `git`
   ```sh
   git clone https://github.com/ekartashov/lib_msg.sh.git
+  git submodule init && git submodule update  # If one would desire to run tests
   ```
 
 ### Basic Usage
@@ -232,7 +233,12 @@ For detailed troubleshooting guidance, see [TROUBLESHOOTING.md](./docs/TROUBLESH
 
 ### Testing
 
+> 📌 _**Dependencies**_
+>
+> Make sure you have `bats` installed on your system, and that you have ran `git submodule init && git submodule update` to clone the testing libraries
+
 The library includes a comprehensive test suite using [BATS](https://github.com/bats-core/bats-core):
+
 
 ```sh
 # Run tests

@@ -10,7 +10,7 @@
 # --- TTY Detection and Terminal Width Management ---
 # ========================================================================
 
-# Global state variables
+# Global sif [ -z "${LIB_MSG_FORCE_STDOUT_TTY+x}" ]; thentate variables
 _LIB_MSG_STDOUT_IS_TTY=""  # Unset initially
 _LIB_MSG_STDERR_IS_TTY=""  # Unset initially
 _LIB_MSG_TERMINAL_WIDTH=0  # Default to 0 (no wrapping)
@@ -32,7 +32,7 @@ _lib_msg_init_detection() {
     # TTY detection - only run if not already set
     if [ -z "$_LIB_MSG_STDOUT_IS_TTY" ]; then
         # Allow overriding TTY detection via environment variables for testing
-        if [ -n "$LIB_MSG_FORCE_STDOUT_TTY" ]; then
+        if [ -n "${LIB_MSG_FORCE_STDOUT_TTY+x}" ]; then
             _LIB_MSG_STDOUT_IS_TTY="$LIB_MSG_FORCE_STDOUT_TTY"
         # IMPORTANT: Format must be exactly "test -t 1" for BATS stubbing to work
         elif test -t 1; then
@@ -43,7 +43,7 @@ _lib_msg_init_detection() {
             _LIB_MSG_STDOUT_IS_TTY="false"
         fi
 
-        if [ -n "$LIB_MSG_FORCE_STDERR_TTY" ]; then
+            if [ -n "${LIB_MSG_FORCE_STDERR_TTY+x}" ]; then
             _LIB_MSG_STDERR_IS_TTY="$LIB_MSG_FORCE_STDERR_TTY"
         # IMPORTANT: Format must be exactly "test -t 2" for BATS stubbing to work
         elif test -t 2; then
@@ -852,7 +852,7 @@ die() {
 
     # Ensure we have colors initialized if stderr is forced to TTY
     # Check for both string "true" and numeric "0" for backward compatibility with tests
-    if [ -n "$LIB_MSG_FORCE_STDERR_TTY" ] && { [ "$LIB_MSG_FORCE_STDERR_TTY" = "true" ] || [ "$LIB_MSG_FORCE_STDERR_TTY" = "0" ]; }; then
+    if [ -n "${LIB_MSG_FORCE_STDERR_TTY+x}" ] && { [ "$LIB_MSG_FORCE_STDERR_TTY" = "true" ] || [ "$LIB_MSG_FORCE_STDERR_TTY" = "0" ]; }; then
         _LIB_MSG_STDERR_IS_TTY="true"
         # Make sure colors are initialized if not already
         if [ -z "$_LIB_MSG_CLR_RED" ]; then

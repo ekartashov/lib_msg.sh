@@ -45,15 +45,22 @@
 
 ### Installation
 
-Add lib_msg.sh to your project with a single command:
+Add `lib_msg.sh` to your project with a single command with one of the ways that suits your use case:
 
-```sh
-# Option 1: Download directly to your project
-curl -o lib_msg.sh https://raw.githubusercontent.com/ekartashov/lib_msg.sh/main/lib_msg.sh
+- Download directly to your project with `curl`
+  ```sh
+  curl -o lib_msg.sh https://raw.githubusercontent.com/ekartashov/lib_msg.sh/main/lib_msg.sh
+  ```
 
-# Option 2: Clone the repository
-git clone https://github.com/ekartashov/lib_msg.sh.git
-```
+- Download directly to your project with `wget`
+  ```sh
+  wget https://raw.githubusercontent.com/ekartashov/lib_msg.sh/main/lib_msg.sh
+  ```
+
+- Clone the repository with `git`
+  ```sh
+  git clone https://github.com/ekartashov/lib_msg.sh.git
+  ```
 
 ### Basic Usage
 
